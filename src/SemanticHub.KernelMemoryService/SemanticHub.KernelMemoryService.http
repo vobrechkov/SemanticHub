@@ -1,0 +1,6 @@
+@SemanticHub.KernelMemoryService_HostAddress = http://localhost:5196
+
+GET {{SemanticHub.KernelMemoryService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

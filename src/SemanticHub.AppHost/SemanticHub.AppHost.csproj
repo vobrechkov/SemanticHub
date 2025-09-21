@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="Aspire.AppHost.Sdk" Version="9.4.0" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>cf7001b0-695d-40c5-843f-51e6b113bd2f</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SemanticHub.KernelMemoryService/SemanticHub.KernelMemoryService.csproj" />
+    <ProjectReference Include="../SemanticHub.KnowledgeApi/SemanticHub.KnowledgeApi.csproj" />
+    <ProjectReference Include="../SemanticHub.Web/SemanticHub.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="9.4.2" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="9.4.2" />
+  </ItemGroup>
+
+</Project>
