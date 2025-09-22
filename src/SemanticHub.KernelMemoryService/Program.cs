@@ -3,6 +3,15 @@ using Microsoft.KernelMemory.Service.AspNetCore;
 using Scalar.AspNetCore;
 using SemanticHub.ServiceDefaults;
 
+const string AzureBlobsConnectionStringKey = "blobs";
+const string AzureOpenAIConnectionStringKey = "openai";
+const string AzureOpenAITextConfigPath = "KernelMemory:Services:AzureOpenAIText";
+const string AzureOpenAIEmbeddingConfigPath = "KernelMemory:Services:AzureOpenAIEmbedding";
+const string AzureBlobsConfigPath = "KernelMemory:Services:AzureBlobs";
+const string AzureQueuesConfigPath = "KernelMemory:Services:AzureQueues";
+const string PostgresConfigPath = "KernelMemory:Services:Postgres";
+const string PostgresConnectionStringKey = "postgres";
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -16,28 +25,28 @@ builder.Services.AddOpenApi("v1", options => options
         return Task.CompletedTask;
     }));
 
-var storageAccount = builder.Configuration.GetConnectionStringAccountName("blobs")
+var storageAccount = builder.Configuration.GetConnectionStringAccountName(AzureBlobsConnectionStringKey)
     ?? throw new InvalidOperationException("Azure Blobs connection string is not configured.");
 
-var openaiEndpoint = builder.Configuration.GetConnectionStringEndpoint("openai")
+var openaiEndpoint = builder.Configuration.GetConnectionStringEndpoint(AzureOpenAIConnectionStringKey)
     ?? throw new InvalidOperationException("Azure OpenAI connection string not configured.");
 
-var textConfig = builder.Configuration.GetSection("KernelMemory:Services:AzureOpenAIText").Get<AzureOpenAIConfig>()
-    ?? throw new InvalidOperationException($"Azure OpenAI text generation service is not configured.");
+var textConfig = builder.Configuration.GetSection(AzureOpenAITextConfigPath).Get<AzureOpenAIConfig>()
+    ?? throw new InvalidOperationException("Azure OpenAI text generation service is not configured.");
 
-var embeddingConfig = builder.Configuration.GetSection("KernelMemory:Services:AzureOpenAIEmbedding").Get<AzureOpenAIConfig>()
-    ?? throw new InvalidOperationException($"Azure OpenAI embedding generation service is not configured.");
+var embeddingConfig = builder.Configuration.GetSection(AzureOpenAIEmbeddingConfigPath).Get<AzureOpenAIConfig>()
+    ?? throw new InvalidOperationException("Azure OpenAI embedding generation service is not configured.");
 
-var storageConfig = builder.Configuration.GetSection("KernelMemory:Services:AzureBlobs").Get<AzureBlobsConfig>()
-    ?? throw new InvalidOperationException($"Azure Blobs service is not configured.");
+var storageConfig = builder.Configuration.GetSection(AzureBlobsConfigPath).Get<AzureBlobsConfig>()
+    ?? throw new InvalidOperationException("Azure Blobs service is not configured.");
 
-var queuesConfig = builder.Configuration.GetSection("KernelMemory:Services:AzureQueues").Get<AzureQueuesConfig>()
-    ?? throw new InvalidOperationException($"Azure Queues service is not configured.");
+var queuesConfig = builder.Configuration.GetSection(AzureQueuesConfigPath).Get<AzureQueuesConfig>()
+    ?? throw new InvalidOperationException("Azure Queues service is not configured.");
 
-var postgresConfig = builder.Configuration.GetSection("KernelMemory:Services:Postgres").Get<PostgresConfig>()
-    ?? throw new InvalidOperationException($"Postgres service is not configured.");
+var postgresConfig = builder.Configuration.GetSection(PostgresConfigPath).Get<PostgresConfig>()
+    ?? throw new InvalidOperationException("Postgres service is not configured.");
 
-postgresConfig.ConnectionString ??= builder.Configuration.GetConnectionString("postgres")
+postgresConfig.ConnectionString ??= builder.Configuration.GetConnectionString(PostgresConnectionStringKey)
     ?? throw new InvalidOperationException("Postgres connection string is not configured.");
 
 queuesConfig.Account = storageAccount;
@@ -71,4 +80,4 @@ app.UseHttpsRedirection();
 app.AddKernelMemoryEndpoints("/api/memory");
 app.MapDefaultEndpoints();
 
-await app.RunAsync();
+app.Run();

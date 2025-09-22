@@ -34,32 +34,60 @@ if (app.Environment.IsDevelopment())
 app.MapPost("/knowledge/upload/text", async (TextUploadRequest request, KernelMemoryClient memoryClient) =>
 {
     var response = await memoryClient.UploadTextAsync(request);
-    return response.IsSuccessStatusCode ? Results.Ok(await response.Content.ReadAsStringAsync())
-                                       : Results.Problem("Failed to upload text");
+    if (response.IsSuccessStatusCode)
+    {
+        return Results.Ok(await response.Content.ReadAsStringAsync());
+    }
+    var errorDetails = await response.Content.ReadAsStringAsync();
+    return Results.Problem(
+        detail: $"Upstream service returned status code {(int)response.StatusCode}: {errorDetails}",
+        statusCode: (int)response.StatusCode
+    );
 });
 
 // Ask question endpoint
 app.MapPost("/knowledge/ask", async (AskRequest request, KernelMemoryClient memoryClient) =>
 {
     var response = await memoryClient.AskQuestionAsync(request);
-    return response.IsSuccessStatusCode ? Results.Ok(await response.Content.ReadAsStringAsync())
-                                       : Results.Problem("Failed to ask question");
+    if (response.IsSuccessStatusCode)
+    {
+        return Results.Ok(await response.Content.ReadAsStringAsync());
+    }
+    var errorDetails = await response.Content.ReadAsStringAsync();
+    return Results.Problem(
+        detail: $"Upstream service returned status code {(int)response.StatusCode}: {errorDetails}",
+        statusCode: (int)response.StatusCode
+    );
 });
 
 // Search knowledge endpoint
 app.MapPost("/knowledge/search", async (SearchRequest request, KernelMemoryClient memoryClient) =>
 {
     var response = await memoryClient.SearchAsync(request);
-    return response.IsSuccessStatusCode ? Results.Ok(await response.Content.ReadAsStringAsync())
-                                       : Results.Problem("Failed to search knowledge");
+    if (response.IsSuccessStatusCode)
+    {
+        return Results.Ok(await response.Content.ReadAsStringAsync());
+    }
+    var errorDetails = await response.Content.ReadAsStringAsync();
+    return Results.Problem(
+        detail: $"Upstream service returned status code {(int)response.StatusCode}: {errorDetails}",
+        statusCode: (int)response.StatusCode
+    );
 });
 
 // Get document status endpoint
 app.MapGet("/knowledge/documents/{documentId}/status", async (string documentId, KernelMemoryClient memoryClient) =>
 {
     var response = await memoryClient.GetDocumentStatusAsync(documentId);
-    return response.IsSuccessStatusCode ? Results.Ok(await response.Content.ReadAsStringAsync())
-                                       : Results.Problem("Failed to get document status");
+    if (response.IsSuccessStatusCode)
+    {
+        return Results.Ok(await response.Content.ReadAsStringAsync());
+    }
+    var errorDetails = await response.Content.ReadAsStringAsync();
+    return Results.Problem(
+        detail: $"Upstream service returned status code {(int)response.StatusCode}: {errorDetails}",
+        statusCode: (int)response.StatusCode
+    );
 });
 
 app.MapDefaultEndpoints();
