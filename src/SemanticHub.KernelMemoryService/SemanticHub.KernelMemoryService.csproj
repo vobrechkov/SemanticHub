@@ -8,6 +8,15 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+    <PackageReference Include="Microsoft.KernelMemory.MemoryDb.Postgres" Version="0.98.250508.3+bd8d34e" />
+    <PackageReference Include="Microsoft.KernelMemory.Service.AspNetCore" Version="0.98.250508.3+bd8d34e" />
+    <PackageReference Include="Microsoft.KernelMemory.AI.AzureOpenAI" Version="0.98.250508.3+bd8d34e" />
+    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="9.4.2" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.8.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticHub.ServiceDefaults\SemanticHub.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>
