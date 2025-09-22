@@ -1,3 +1,4 @@
+using SemanticHub.ServiceDefaults;
 using SemanticHub.Web;
 using SemanticHub.Web.Components;
 

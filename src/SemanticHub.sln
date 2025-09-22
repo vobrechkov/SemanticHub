@@ -5,7 +5,7 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticHub.AppHost", "SemanticHub.AppHost\SemanticHub.AppHost.csproj", "{EF5E7B77-05A2-4891-ADF6-E0208C3A27B2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticHub.KnowledgeApi", "SemanticHub.ApiService\SemanticHub.KnowledgeApi.csproj", "{D1B983F1-C9BA-49B8-A4FD-3651D3BA94ED}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticHub.KnowledgeApi", "SemanticHub.KnowledgeApi\SemanticHub.KnowledgeApi.csproj", "{D1B983F1-C9BA-49B8-A4FD-3651D3BA94ED}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticHub.ServiceDefaults", "SemanticHub.ServiceDefaults\SemanticHub.ServiceDefaults.csproj", "{EA8BB870-3292-4333-A88E-A3FF79CFCC60}"
 EndProject
