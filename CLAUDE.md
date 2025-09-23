@@ -34,11 +34,6 @@ dotnet build
 
 # Run the AppHost (starts all services via Aspire)
 dotnet run --project src/SemanticHub.AppHost
-
-# Run individual services (for development)
-dotnet run --project src/SemanticHub.Web
-dotnet run --project src/SemanticHub.KnowledgeApi
-dotnet run --project src/SemanticHub.KernelMemoryService
 ```
 
 ### Testing

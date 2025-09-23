@@ -1,5 +1,6 @@
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Service.AspNetCore;
+using Npgsql;
 using Scalar.AspNetCore;
 using SemanticHub.ServiceDefaults;
 
@@ -46,9 +47,10 @@ var queuesConfig = builder.Configuration.GetSection(AzureQueuesConfigPath).Get<A
 var postgresConfig = builder.Configuration.GetSection(PostgresConfigPath).Get<PostgresConfig>()
     ?? throw new InvalidOperationException("Postgres service is not configured.");
 
-postgresConfig.ConnectionString ??= builder.Configuration.GetConnectionString(PostgresConnectionStringKey)
+var postgresConnection = builder.Configuration.GetConnectionString(PostgresConnectionStringKey)
     ?? throw new InvalidOperationException("Postgres connection string is not configured.");
 
+postgresConfig.ConnectionString = postgresConnection;
 queuesConfig.Account = storageAccount;
 storageConfig.Account = storageAccount;
 textConfig.Endpoint = openaiEndpoint;
