@@ -3,6 +3,7 @@ using Microsoft.KernelMemory.Service.AspNetCore;
 using Npgsql;
 using Scalar.AspNetCore;
 using SemanticHub.ServiceDefaults;
+using SemanticHub.KernelMemoryService.Extensions;
 
 const string AzureBlobsConnectionStringKey = "blobs";
 const string AzureOpenAIConnectionStringKey = "openai";
@@ -78,8 +79,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.AddKernelMemoryEndpoints("/api/memory");
+app.AddKernelMemoryDiagnosticsEndpoints("/api/memory/diagnostics");
 app.MapDefaultEndpoints();
-
 app.Run();
+
