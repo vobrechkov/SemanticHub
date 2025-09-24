@@ -8,14 +8,18 @@ var blobs = storage.AddBlobs("blobs");
 var queues = storage.AddQueues("queues");
 var chatDeployment = openai.AddDeployment("chat", "gpt-4o-mini", "2024-07-18");
 var embeddingDeployment = openai.AddDeployment("embedding", "text-embedding-3-small", "1");
-var cache = builder.AddRedis("cache");
+var cache = builder.AddRedis("cache", 56379);
 var postgres = builder.AddPostgres("postgres")
     .WithBindMount(
-        Path.Combine("Infrastructure", "postgres", "init.sql"),
-        "/docker-entrypoint-initdb.d/init.sql",
-        true) // Enables `vector` extension
+        // Enables `vector` extension
+        source: Path.Combine("Infrastructure", "postgres", "init.sql"),
+        target: "/docker-entrypoint-initdb.d/init.sql", 
+        isReadOnly: true)
+    .WithDataVolume()
+    .WithLifetime(ContainerLifetime.Persistent)
     .WithImage("ankane/pgvector") // Image with `pgvector` support
-    .WithImageTag("latest");
+    .WithImageTag("latest")
+    .WithHostPort(55432);
 
 var kernelMemory = builder.AddProject<Projects.SemanticHub_KernelMemoryService>("kernelmemory")
     .WithReference(blobs).WaitFor(blobs)

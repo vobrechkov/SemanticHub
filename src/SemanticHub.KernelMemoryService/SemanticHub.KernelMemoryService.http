@@ -1,6 +1,118 @@
-@SemanticHub.KernelMemoryService_HostAddress = http://localhost:5196
+@baseUrl = http://localhost:5001
 
-GET {{SemanticHub.KernelMemoryService_HostAddress}}/weatherforecast/
-Accept: application/json
+### Upload a test document
+POST {{baseUrl}}/api/memory/upload/text
+Content-Type: application/json
+
+{
+  "text": "Microsoft Semantic Kernel is a powerful SDK that integrates Large Language Models (LLMs) like OpenAI, Azure OpenAI, and Hugging Face with conventional programming languages like C#, Python, and Java. Semantic Kernel achieves this by allowing you to define plugins that can be chained together in just a few lines of code. The framework provides memory capabilities, allowing applications to store and retrieve information across conversations.",
+  "documentId": "semantic-kernel-intro",
+  "tags": {
+    "category": "documentation",
+    "topic": "semantic-kernel",
+    "source": "microsoft"
+  }
+}
+
+### Upload another test document
+POST {{baseUrl}}/api/memory/upload/text
+Content-Type: application/json
+
+{
+  "text": "Kernel Memory is a multi-modal AI service specialized in the efficient indexing of datasets through custom continuous data hybrid search pipelines, with support for Retrieval Augmented Generation (RAG), synthetic memory, prompt engineering, and custom semantic memory processing.",
+  "documentId": "kernel-memory-intro",
+  "tags": {
+    "category": "documentation",
+    "topic": "kernel-memory",
+    "source": "microsoft"
+  }
+}
+
+### Check document upload status
+GET {{baseUrl}}/api/memory/documents/semantic-kernel-intro
+
+### Search with very low relevance threshold (should find results)
+POST {{baseUrl}}/api/memory/search
+Content-Type: application/json
+
+{
+  "query": "Semantic Kernel",
+  "minRelevance": 0.0,
+  "limit": 10
+}
+
+### Ask a question (should find results)
+POST {{baseUrl}}/api/memory/ask
+Content-Type: application/json
+
+{
+  "question": "What is Semantic Kernel?"
+}
+
+### Search with high relevance threshold (might not find results)
+POST {{baseUrl}}/api/memory/search
+Content-Type: application/json
+
+{
+  "query": "Semantic Kernel",
+  "minRelevance": 0.8,
+  "limit": 10
+}
+
+### Search with filters
+POST {{baseUrl}}/api/memory/search
+Content-Type: application/json
+
+{
+  "query": "memory",
+  "filters": [
+    {
+      "category": "documentation"
+    }
+  ],
+  "minRelevance": 0.0,
+  "limit": 10
+}
+
+### DIAGNOSTIC ENDPOINTS ###
+
+### Check what tables exist in Postgres
+GET {{baseUrl}}/api/diagnostics/tables
+
+### Get count of records in memory tables
+GET {{baseUrl}}/api/diagnostics/memory-count
+
+### Get sample data from memory tables
+GET {{baseUrl}}/api/diagnostics/memory-sample?limit=3
+
+### Test search with different parameters
+POST {{baseUrl}}/api/diagnostics/test-search
+Content-Type: application/json
+
+{
+  "query": "Semantic Kernel",
+  "minRelevance": 0.0,
+  "limit": 5
+}
+
+### Test search with higher relevance threshold
+POST {{baseUrl}}/api/diagnostics/test-search
+Content-Type: application/json
+
+{
+  "query": "Semantic Kernel",
+  "minRelevance": 0.5,
+  "limit": 5
+}
+
+### Test search for exact text from uploaded document
+POST {{baseUrl}}/api/diagnostics/test-search
+Content-Type: application/json
+
+{
+  "query": "Large Language Models",
+  "minRelevance": 0.0,
+  "limit": 10
+}
 
 ###
