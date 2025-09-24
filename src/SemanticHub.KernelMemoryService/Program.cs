@@ -1,6 +1,5 @@
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Service.AspNetCore;
-using Npgsql;
 using Scalar.AspNetCore;
 using SemanticHub.ServiceDefaults;
 using SemanticHub.KernelMemoryService.Extensions;
@@ -83,4 +82,3 @@ app.AddKernelMemoryEndpoints("/api/memory");
 app.AddKernelMemoryDiagnosticsEndpoints("/api/memory/diagnostics");
 app.MapDefaultEndpoints();
 app.Run();
-

@@ -1,4 +1,4 @@
-# SemanticKernelMemoryRAG
+# SemanticHub
 
 A sample application that explores integrating Microsoft Kernel Memory as the memory store for Microsoft Semantic Kernel using the "memory as a service" architecture pattern.
 
