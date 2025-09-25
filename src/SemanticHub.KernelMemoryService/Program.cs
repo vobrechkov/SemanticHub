@@ -2,6 +2,7 @@ using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Service.AspNetCore;
 using Scalar.AspNetCore;
 using SemanticHub.ServiceDefaults;
+using SemanticHub.KernelMemoryService.Extensions;
 
 const string AzureBlobsConnectionStringKey = "blobs";
 const string AzureOpenAIConnectionStringKey = "openai";
@@ -46,13 +47,12 @@ var queuesConfig = builder.Configuration.GetSection(AzureQueuesConfigPath).Get<A
 var postgresConfig = builder.Configuration.GetSection(PostgresConfigPath).Get<PostgresConfig>()
     ?? throw new InvalidOperationException("Postgres service is not configured.");
 
-postgresConfig.ConnectionString ??= builder.Configuration.GetConnectionString(PostgresConnectionStringKey)
+var postgresConnection = builder.Configuration.GetConnectionString(PostgresConnectionStringKey)
     ?? throw new InvalidOperationException("Postgres connection string is not configured.");
 
-queuesConfig.Account = storageAccount;
-storageConfig.Account = storageAccount;
-textConfig.Endpoint = openaiEndpoint;
-embeddingConfig.Endpoint = openaiEndpoint;
+postgresConfig.ConnectionString = postgresConnection;
+queuesConfig.Account = storageConfig.Account = storageAccount;
+textConfig.Endpoint = embeddingConfig.Endpoint = openaiEndpoint;
 
 var kernelMemoryBuilder = new KernelMemoryBuilder(builder.Services)
     .WithAzureQueuesOrchestration(queuesConfig)
@@ -62,9 +62,7 @@ var kernelMemoryBuilder = new KernelMemoryBuilder(builder.Services)
     .WithPostgresMemoryDb(postgresConfig);
 
 var kernelMemory = kernelMemoryBuilder.Build<MemoryService>();
-
 builder.Services.AddSingleton<IKernelMemory>(kernelMemory);
-
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -76,8 +74,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.AddKernelMemoryEndpoints("/api/memory");
+app.AddKernelMemoryDiagnosticsEndpoints("/api/memory/diagnostics");
 app.MapDefaultEndpoints();
-
 app.Run();

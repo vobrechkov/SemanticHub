@@ -416,3 +416,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+.secrets
+.DS_Store
+.idea/
+
+
+#Ignore insiders AI rules
+.github/instructions/codacy.instructions.md
