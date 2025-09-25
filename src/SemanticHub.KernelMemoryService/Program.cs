@@ -1,6 +1,5 @@
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Service.AspNetCore;
-using Npgsql;
 using Scalar.AspNetCore;
 using SemanticHub.ServiceDefaults;
 using SemanticHub.KernelMemoryService.Extensions;
@@ -52,10 +51,8 @@ var postgresConnection = builder.Configuration.GetConnectionString(PostgresConne
     ?? throw new InvalidOperationException("Postgres connection string is not configured.");
 
 postgresConfig.ConnectionString = postgresConnection;
-queuesConfig.Account = storageAccount;
-storageConfig.Account = storageAccount;
-textConfig.Endpoint = openaiEndpoint;
-embeddingConfig.Endpoint = openaiEndpoint;
+queuesConfig.Account = storageConfig.Account = storageAccount;
+textConfig.Endpoint = embeddingConfig.Endpoint = openaiEndpoint;
 
 var kernelMemoryBuilder = new KernelMemoryBuilder(builder.Services)
     .WithAzureQueuesOrchestration(queuesConfig)
@@ -65,9 +62,7 @@ var kernelMemoryBuilder = new KernelMemoryBuilder(builder.Services)
     .WithPostgresMemoryDb(postgresConfig);
 
 var kernelMemory = kernelMemoryBuilder.Build<MemoryService>();
-
 builder.Services.AddSingleton<IKernelMemory>(kernelMemory);
-
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -83,4 +78,3 @@ app.AddKernelMemoryEndpoints("/api/memory");
 app.AddKernelMemoryDiagnosticsEndpoints("/api/memory/diagnostics");
 app.MapDefaultEndpoints();
 app.Run();
-
