@@ -8,7 +8,7 @@ var blobs = storage.AddBlobs("blobs");
 var queues = storage.AddQueues("queues");
 var chatDeployment = openai.AddDeployment("chat", "gpt-4o-mini", "2024-07-18");
 var embeddingDeployment = openai.AddDeployment("embedding", "text-embedding-3-small", "1");
-var cache = builder.AddRedis("cache", 56379);
+var cache = builder.AddRedis("cache", 16379);
 var postgres = builder.AddPostgres("postgres")
     .WithBindMount(
         // Enables `vector` extension
@@ -19,7 +19,7 @@ var postgres = builder.AddPostgres("postgres")
     .WithLifetime(ContainerLifetime.Persistent)
     .WithImage("ankane/pgvector") // Image with `pgvector` support
     .WithImageTag("latest")
-    .WithHostPort(55432);
+    .WithHostPort(15432);
 
 var kernelMemory = builder.AddProject<Projects.SemanticHub_KernelMemoryService>("kernelmemory")
     .WithReference(blobs).WaitFor(blobs)
