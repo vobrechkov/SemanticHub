@@ -14,6 +14,7 @@ The solution consists of several interconnected services:
 - **SemanticHub.KernelMemoryService** - Dedicated service that provides Kernel Memory functionality as a web service
 - **SemanticHub.KnowledgeApi** - Web API service that exposes knowledge/memory endpoints and proxies requests to KernelMemoryService
 - **SemanticHub.Web** - Blazor Server UI that provides the frontend interface
+- **SemanticHub.WebApp** - Next.js/React dashboard UI (modern alternative to Blazor UI)
 - **SemanticHub.ServiceDefaults** - Shared service configuration and extensions
 - **SemanticHub.Tests** - xUnit test project for integration testing
 
@@ -89,7 +90,8 @@ This will start all services with proper dependency management:
 ### 3. Access the Services
 
 - **Aspire Dashboard**: `https://localhost:<aspire-port>` (check console output)
-- **Web UI**: `https://localhost:<web-port>` (check console output)
+- **Web UI (Blazor)**: `https://localhost:<web-port>` (check console output)
+- **WebApp (Next.js/React)**: `http://localhost:3000` (check Aspire dashboard)
 - **KnowledgeApi**: `https://localhost:<api-port>` (check console output)
 - **KernelMemoryService**: `https://localhost:<memory-port>` (check console output)
 
@@ -216,6 +218,27 @@ If you encounter build errors:
 - Health checks are implemented at `/health` endpoints
 - Microsoft Kernel Memory runs as a dedicated service with full API exposure
 
+## User Interfaces
+
+The solution provides two UI options:
+
+### Blazor Server (SemanticHub.Web)
+- **Technology**: Blazor Server with SignalR
+- **Features**: Server-side rendering, real-time updates
+- **Port**: Dynamic (check Aspire dashboard)
+
+### Next.js/React (SemanticHub.WebApp)
+- **Technology**: Next.js 15 + React 19 + Bootstrap 5
+- **Features**: Modern React ecosystem, SSR/CSR, SWR data fetching
+- **Port**: 3000
+- **Documentation**: See [QUICKSTART.md](src/SemanticHub.WebApp/QUICKSTART.md)
+- **Migration Guide**: See [MIGRATION.md](MIGRATION.md)
+
+Both UIs provide the same core functionality:
+- Home/Welcome page
+- Interactive counter demonstration
+- Weather forecast data display
+
 ## Key Features
 
 - **Memory as a Service**: Kernel Memory runs as an independent, scalable service
@@ -228,3 +251,4 @@ If you encounter build errors:
 - **Interactive Documentation**: Scalar API Reference for KernelMemoryService
 - **Scalability**: Services can be scaled independently
 - **Modern Architecture**: .NET 9, Aspire, and cloud-native patterns
+- **Multiple UI Options**: Choose between Blazor Server or Next.js/React

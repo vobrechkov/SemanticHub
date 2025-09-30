@@ -43,10 +43,17 @@ if (builder.Environment.IsDevelopment())
 var api = builder.AddProject<Projects.SemanticHub_KnowledgeApi>("knowledge-api")
     .WithReference(kernelMemory).WaitFor(kernelMemory);
 
-builder.AddProject<Projects.SemanticHub_Web>("web-ui")
+//builder.AddProject<Projects.SemanticHub_Web>("web-ui")
+//    .WithExternalHttpEndpoints()
+//    .WithHttpHealthCheck("/health")
+//    .WithReference(api).WaitFor(api)
+//    .WithReference(cache).WaitFor(cache);
+
+// Add Next.js React web app
+var webApp = builder.AddNpmApp("webapp", "../SemanticHub.WebApp", "dev")
+    .WithHttpEndpoint(port: 3000, env: "PORT")
     .WithExternalHttpEndpoints()
-    .WithHttpHealthCheck("/health")
-    .WithReference(api).WaitFor(api)
-    .WithReference(cache).WaitFor(cache);
+    .WithEnvironment("KNOWLEDGE_API_URL", api.GetEndpoint("http"))
+    .WithReference(api).WaitFor(api);
 
 builder.Build().Run();
