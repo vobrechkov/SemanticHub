@@ -127,7 +127,7 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
                     // Use merged parameters
                     Parameters = allParameters,
                     RequestBody = op.RequestBody,
-                    Responses = op.Responses ?? new OpenApiResponses()
+                    Responses = op.Responses ?? []
                 };
 
                 // Extract security requirements

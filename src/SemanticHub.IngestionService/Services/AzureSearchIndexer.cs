@@ -9,22 +9,11 @@ namespace SemanticHub.IngestionService.Services;
 /// <summary>
 /// Writes chunked documents into Azure AI Search.
 /// </summary>
-public class AzureSearchIndexer
+public class AzureSearchIndexer(
+    SearchClient searchClient,
+    IngestionOptions options,
+    ILogger<AzureSearchIndexer> logger)
 {
-    private readonly SearchClient _searchClient;
-    private readonly IngestionOptions _options;
-    private readonly ILogger<AzureSearchIndexer> _logger;
-
-    public AzureSearchIndexer(
-        SearchClient searchClient,
-        IngestionOptions options,
-        ILogger<AzureSearchIndexer> logger)
-    {
-        _searchClient = searchClient;
-        _options = options;
-        _logger = logger;
-    }
-
     public async Task UploadChunksAsync(
         IReadOnlyList<DocumentChunk> chunks,
         CancellationToken cancellationToken = default)
@@ -37,37 +26,37 @@ public class AzureSearchIndexer
         var batch = IndexDocumentsBatch.Create(
             chunks.Select(chunk => IndexDocumentsAction.MergeOrUpload(ToSearchDocument(chunk))).ToArray());
 
-        await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken);
+        await searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken);
     }
 
     private SearchDocument ToSearchDocument(DocumentChunk chunk)
     {
         var document = new SearchDocument
         {
-            [_options.AzureSearch.KeyField] = chunk.Id,
-            [_options.AzureSearch.ContentField] = chunk.Content,
+            [options.AzureSearch.KeyField] = chunk.Id,
+            [options.AzureSearch.ContentField] = chunk.Content,
             ["sourceUrl"] = chunk.Metadata?.SourceUrl,
             ["sourceType"] = chunk.Metadata?.SourceType,
             ["ingestedAt"] = chunk.Metadata?.IngestedAt ?? DateTimeOffset.UtcNow,
-            ["tags"] = chunk.Metadata?.Tags ?? new List<string>()
+            ["tags"] = chunk.Metadata?.Tags ?? []
         };
 
-        SetIfConfigured(_options.AzureSearch.ParentDocumentField, chunk.ParentDocumentId);
-        SetIfConfigured(_options.AzureSearch.TitleField, chunk.Metadata?.Title ?? chunk.Title ?? chunk.ParentDocumentId);
-        SetIfConfigured(_options.AzureSearch.SummaryField, BuildSummary(chunk));
-        SetIfConfigured(_options.AzureSearch.ChunkIndexField, chunk.ChunkIndex);
+        SetIfConfigured(options.AzureSearch.ParentDocumentField, chunk.ParentDocumentId);
+        SetIfConfigured(options.AzureSearch.TitleField, chunk.Metadata?.Title ?? chunk.Title ?? chunk.ParentDocumentId);
+        SetIfConfigured(options.AzureSearch.SummaryField, BuildSummary(chunk));
+        SetIfConfigured(options.AzureSearch.ChunkIndexField, chunk.ChunkIndex);
 
-        if (!string.IsNullOrEmpty(_options.AzureSearch.ChunkTitleField))
+        if (!string.IsNullOrEmpty(options.AzureSearch.ChunkTitleField))
         {
-            SetIfConfigured(_options.AzureSearch.ChunkTitleField, chunk.Title ?? chunk.Metadata?.Title);
+            SetIfConfigured(options.AzureSearch.ChunkTitleField, chunk.Title ?? chunk.Metadata?.Title);
         }
 
-        if (!string.IsNullOrEmpty(_options.AzureSearch.VectorField) && chunk.ContentVector is { Length: > 0 })
+        if (!string.IsNullOrEmpty(options.AzureSearch.VectorField) && chunk.ContentVector is { Length: > 0 })
         {
-            document[_options.AzureSearch.VectorField] = chunk.ContentVector;
+            document[options.AzureSearch.VectorField] = chunk.ContentVector;
         }
 
-        if (!string.IsNullOrEmpty(_options.AzureSearch.MetadataField))
+        if (!string.IsNullOrEmpty(options.AzureSearch.MetadataField))
         {
             var metadataPayload = chunk.Metadata?.CustomMetadata?.Count > 0
                 ? JsonSerializer.Serialize(chunk.Metadata.CustomMetadata)
@@ -75,7 +64,7 @@ public class AzureSearchIndexer
 
             if (metadataPayload is not null)
             {
-                document[_options.AzureSearch.MetadataField] = metadataPayload;
+                document[options.AzureSearch.MetadataField] = metadataPayload;
             }
         }
 

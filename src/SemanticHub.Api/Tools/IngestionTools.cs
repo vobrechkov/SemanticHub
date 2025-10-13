@@ -7,18 +7,10 @@ namespace SemanticHub.Api.Tools;
 /// <summary>
 /// Tools that allow agents to send content to the ingestion pipeline backed by Azure AI Search.
 /// </summary>
-public class IngestionTools
+public class IngestionTools(
+    IngestionClient ingestionClient,
+    ILogger<IngestionTools> logger)
 {
-    private readonly IngestionClient _ingestionClient;
-    private readonly ILogger<IngestionTools> _logger;
-
-    public IngestionTools(
-        IngestionClient ingestionClient,
-        ILogger<IngestionTools> logger)
-    {
-        _ingestionClient = ingestionClient;
-        _logger = logger;
-    }
 
     /// <summary>
     /// Ingest Markdown content into the knowledge base.
@@ -43,7 +35,7 @@ public class IngestionTools
                 Content = content
             };
 
-            var response = await _ingestionClient.IngestMarkdownAsync(request, cancellationToken);
+            var response = await ingestionClient.IngestMarkdownAsync(request, cancellationToken);
             if (response.Success)
             {
                 return $"Document '{response.DocumentId}' ingested successfully with {response.ChunksIndexed} chunk(s).";
@@ -53,7 +45,7 @@ public class IngestionTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to ingest markdown content");
+            logger.LogError(ex, "Failed to ingest markdown content");
             return $"Error ingesting document: {ex.Message}";
         }
     }

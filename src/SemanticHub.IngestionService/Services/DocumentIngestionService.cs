@@ -6,41 +6,22 @@ namespace SemanticHub.IngestionService.Services;
 /// <summary>
 /// High-level orchestration for ingesting documents into Azure AI Search.
 /// </summary>
-public class DocumentIngestionService
+public class DocumentIngestionService(
+    ILogger<DocumentIngestionService> logger,
+    SemanticChunker chunker,
+    AzureOpenAIEmbeddingService embeddingService,
+    AzureSearchIndexer indexer,
+    SearchIndexInitializer indexInitializer,
+    IngestionOptions options,
+    MarkdownConverter markdownConverter)
 {
-    private readonly ILogger<DocumentIngestionService> _logger;
-    private readonly SemanticChunker _chunker;
-    private readonly AzureOpenAIEmbeddingService _embeddingService;
-    private readonly AzureSearchIndexer _indexer;
-    private readonly SearchIndexInitializer _indexInitializer;
-    private readonly IngestionOptions _options;
-    private readonly MarkdownConverter _markdownConverter;
-
-    public DocumentIngestionService(
-        ILogger<DocumentIngestionService> logger,
-        SemanticChunker chunker,
-        AzureOpenAIEmbeddingService embeddingService,
-        AzureSearchIndexer indexer,
-        SearchIndexInitializer indexInitializer,
-        IngestionOptions options,
-        MarkdownConverter markdownConverter)
-    {
-        _logger = logger;
-        _chunker = chunker;
-        _embeddingService = embeddingService;
-        _indexer = indexer;
-        _indexInitializer = indexInitializer;
-        _options = options;
-        _markdownConverter = markdownConverter;
-    }
-
     public async Task<DocumentIngestionResult> IngestMarkdownAsync(
         MarkdownIngestionRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await _indexInitializer.EnsureInitializedAsync(cancellationToken);
+        await indexInitializer.EnsureInitializedAsync(cancellationToken);
 
         var documentId = string.IsNullOrWhiteSpace(request.DocumentId)
             ? GenerateDocumentId(request.Title)
@@ -49,7 +30,7 @@ public class DocumentIngestionService
         var metadata = BuildMetadata(documentId, request);
 
         // Parse YAML frontmatter if provided to enrich metadata.
-        var frontmatter = _markdownConverter.ParseFrontmatter(request.Content);
+        var frontmatter = markdownConverter.ParseFrontmatter(request.Content);
         if (frontmatter != null)
         {
             MergeFrontmatter(metadata, frontmatter);
@@ -57,22 +38,22 @@ public class DocumentIngestionService
 
         var content = StripFrontmatter(request.Content);
 
-        _logger.LogInformation("Chunking document {DocumentId}. Length: {Length} characters", metadata.Id, content.Length);
+        logger.LogInformation("Chunking document {DocumentId}. Length: {Length} characters", metadata.Id, content.Length);
 
-        var chunks = _chunker.ChunkMarkdown(content, metadata.Id, metadata);
+        var chunks = chunker.ChunkMarkdown(content, metadata.Id, metadata);
         if (chunks.Count == 0)
         {
             return new DocumentIngestionResult
             {
                 Success = false,
                 DocumentId = metadata.Id,
-                IndexName = _options.AzureSearch.IndexName,
+                IndexName = options.AzureSearch.IndexName,
                 ChunksIndexed = 0,
                 Message = "No content chunks produced."
             };
         }
 
-        var embeddings = await _embeddingService.GenerateEmbeddingsAsync(
+        var embeddings = await embeddingService.GenerateEmbeddingsAsync(
             chunks.Select(c => c.Content).ToList(),
             cancellationToken);
 
@@ -81,17 +62,17 @@ public class DocumentIngestionService
             chunks[i].ContentVector = embeddings[i];
         }
 
-        _logger.LogInformation("Uploading {Count} chunks for document {DocumentId}", chunks.Count, metadata.Id);
+        logger.LogInformation("Uploading {Count} chunks for document {DocumentId}", chunks.Count, metadata.Id);
 
-        await _indexer.UploadChunksAsync(chunks, cancellationToken);
+        await indexer.UploadChunksAsync(chunks, cancellationToken);
 
         return new DocumentIngestionResult
         {
             Success = true,
             DocumentId = metadata.Id,
-            IndexName = _options.AzureSearch.IndexName,
+            IndexName = options.AzureSearch.IndexName,
             ChunksIndexed = chunks.Count,
-            Message = $"Document '{metadata.Id}' ingested into index '{_options.AzureSearch.IndexName}'."
+            Message = $"Document '{metadata.Id}' ingested into index '{options.AzureSearch.IndexName}'."
         };
     }
 
@@ -125,8 +106,8 @@ public class DocumentIngestionService
             SourceUrl = request.SourceUrl ?? "manual",
             SourceType = string.IsNullOrWhiteSpace(request.SourceType) ? "manual" : request.SourceType!,
             Description = null,
-            Tags = request.Tags ?? new List<string>(),
-            CustomMetadata = request.Metadata ?? new Dictionary<string, object>()
+            Tags = request.Tags ?? [],
+            CustomMetadata = request.Metadata ?? []
         };
     }
 

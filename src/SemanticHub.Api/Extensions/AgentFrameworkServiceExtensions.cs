@@ -1,9 +1,8 @@
-using Azure;
-using Azure.AI.OpenAI;
 using Azure.Search.Documents;
+using Azure.Search.Documents.Indexes;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using OpenAI.Embeddings;
+using Microsoft.Extensions.DependencyInjection;
 using SemanticHub.Api.Configuration;
 using SemanticHub.Api.Memory;
 using SemanticHub.Api.Services;
@@ -27,20 +26,9 @@ public static class AgentFrameworkServiceExtensions
             .Get<AgentFrameworkOptions>()
             ?? throw new InvalidOperationException("AgentFramework configuration section is missing");
 
-        options.ConfigureFromAspireServiceDiscovery(configuration);
+        options.ConfigureFromServiceDiscovery(configuration);
 
         services.AddSingleton(options);
-
-        services.AddSingleton<EmbeddingClient>(provider =>
-        {
-            if (string.IsNullOrWhiteSpace(options.AzureOpenAI.EmbeddingDeployment))
-            {
-                throw new InvalidOperationException("AgentFramework:AzureOpenAI:EmbeddingDeployment must be configured.");
-            }
-
-            var azureOpenAIClient = provider.GetRequiredService<AzureOpenAIClient>();
-            return azureOpenAIClient.GetEmbeddingClient(options.AzureOpenAI.EmbeddingDeployment);
-        });
 
         services.AddSingleton<ChatClientFactory>();
         services.AddSingleton<IChatClient>(sp =>
@@ -50,17 +38,12 @@ public static class AgentFrameworkServiceExtensions
         });
 
         // Azure AI Search retrieval plumbing
-        if (!string.IsNullOrEmpty(options.Memory.AzureSearch.Endpoint) &&
-            !string.IsNullOrEmpty(options.Memory.AzureSearch.IndexName) &&
-            !string.IsNullOrEmpty(options.Memory.AzureSearch.ApiKey))
+        if (!string.IsNullOrEmpty(options.Memory.AzureSearch.IndexName))
         {
             services.AddSingleton(sp =>
             {
-                var credential = new AzureKeyCredential(options.Memory.AzureSearch.ApiKey);
-                return new SearchClient(
-                    new Uri(options.Memory.AzureSearch.Endpoint),
-                    options.Memory.AzureSearch.IndexName,
-                    credential);
+                var indexClient = sp.GetRequiredService<SearchIndexClient>();
+                return indexClient.GetSearchClient(options.Memory.AzureSearch.IndexName);
             });
 
             services.AddSingleton<IAzureSearchKnowledgeStore, AzureSearchKnowledgeStore>();
@@ -76,7 +59,7 @@ public static class AgentFrameworkServiceExtensions
     /// <summary>
     /// Configures the Agent Framework options from Aspire service discovery
     /// </summary>
-    public static void ConfigureFromAspireServiceDiscovery(
+    public static void ConfigureFromServiceDiscovery(
         this AgentFrameworkOptions options,
         IConfiguration configuration)
     {
@@ -125,6 +108,6 @@ public static class ConfigurationExtensions
         var parts = connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries);
         var match = parts.FirstOrDefault(p => p.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase));
 
-        return match != null ? match[(key.Length + 1)..] : null;
+        return match?[(key.Length + 1)..];
     }
 }

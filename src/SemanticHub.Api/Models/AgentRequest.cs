@@ -53,11 +53,6 @@ public class AgentChatResponse
 public class WorkflowExecutionRequest
 {
     /// <summary>
-    /// The workflow ID to execute
-    /// </summary>
-    public required string WorkflowId { get; set; }
-
-    /// <summary>
     /// Input parameters for the workflow
     /// </summary>
     public Dictionary<string, object>? Parameters { get; set; }

@@ -9,21 +9,11 @@ namespace SemanticHub.Api.Workflows;
 /// Multi-agent workflow for conducting research using the knowledge base
 /// Demonstrates sequential workflow: Search → Analyze → Synthesize
 /// </summary>
-public class ResearchWorkflow
+public class ResearchWorkflow(
+    ILogger<ResearchWorkflow> logger,
+    IChatClient chatClient,
+    KnowledgeBaseTools knowledgeBaseTools)
 {
-    private readonly ILogger<ResearchWorkflow> _logger;
-    private readonly IChatClient _chatClient;
-    private readonly KnowledgeBaseTools _knowledgeBaseTools;
-
-    public ResearchWorkflow(
-        ILogger<ResearchWorkflow> logger,
-        IChatClient chatClient,
-        KnowledgeBaseTools knowledgeBaseTools)
-    {
-        _logger = logger;
-        _chatClient = chatClient;
-        _knowledgeBaseTools = knowledgeBaseTools;
-    }
 
     /// <summary>
     /// Creates a multi-agent research workflow
@@ -31,10 +21,10 @@ public class ResearchWorkflow
     /// </summary>
     public async Task<AIAgent> CreateWorkflowAsync()
     {
-        _logger.LogInformation("Creating research workflow");
+        logger.LogInformation("Creating research workflow");
 
         // Step 1: Search Agent - Finds relevant information
-        var searchAgent = _chatClient.CreateAIAgent(
+        var searchAgent = chatClient.CreateAIAgent(
             instructions: @"You are a search specialist. Your job is to:
 1. Understand the research question or topic
 2. Break it down into key concepts and search terms
@@ -45,13 +35,13 @@ public class ResearchWorkflow
             name: "SearchAgent",
             tools:
             [
-                AIFunctionFactory.Create(_knowledgeBaseTools.SearchKnowledgeBase),
-                AIFunctionFactory.Create(_knowledgeBaseTools.ListDocuments)
+                AIFunctionFactory.Create(knowledgeBaseTools.SearchKnowledgeBase),
+                AIFunctionFactory.Create(knowledgeBaseTools.ListDocuments)
             ]
         );
 
         // Step 2: Analysis Agent - Analyzes and evaluates information
-        var analysisAgent = _chatClient.CreateAIAgent(
+        var analysisAgent = chatClient.CreateAIAgent(
             instructions: @"You are an analysis specialist. Your job is to:
 1. Review the search results provided by the search agent
 2. Identify key themes, patterns, and insights
@@ -64,7 +54,7 @@ public class ResearchWorkflow
         );
 
         // Step 3: Synthesis Agent - Creates comprehensive response
-        var synthesisAgent = _chatClient.CreateAIAgent(
+        var synthesisAgent = chatClient.CreateAIAgent(
             instructions: @"You are a synthesis specialist. Your job is to:
 1. Take the analyzed findings from the analysis agent
 2. Create a coherent, comprehensive response
@@ -76,13 +66,13 @@ public class ResearchWorkflow
             name: "SynthesisAgent"
         );
 
-        _logger.LogInformation("Creating sequential workflow with 3 agents: Search → Analysis → Synthesis");
+        logger.LogInformation("Creating sequential workflow with 3 agents: Search → Analysis → Synthesis");
 
         // Build sequential workflow
         Workflow workflow = AgentWorkflowBuilder
             .BuildSequential(searchAgent, analysisAgent, synthesisAgent);
 
-        _logger.LogInformation("Research workflow created successfully");
+        logger.LogInformation("Research workflow created successfully");
 
         // Convert workflow to agent
         return await workflow.AsAgentAsync();
@@ -93,10 +83,10 @@ public class ResearchWorkflow
     /// </summary>
     public async Task<AIAgent> CreateFastResearchWorkflowAsync()
     {
-        _logger.LogInformation("Creating fast research workflow (2-step)");
+        logger.LogInformation("Creating fast research workflow (2-step)");
 
         // Step 1: Enhanced Search Agent (combines search and basic analysis)
-        var searchAgent = _chatClient.CreateAIAgent(
+        var searchAgent = chatClient.CreateAIAgent(
             instructions: @"You are a research assistant. Your job is to:
 1. Search the knowledge base for relevant information
 2. Gather and organize the most relevant results
@@ -104,12 +94,12 @@ public class ResearchWorkflow
             name: "FastSearchAgent",
             tools:
             [
-                AIFunctionFactory.Create(_knowledgeBaseTools.SearchKnowledgeBase)
+                AIFunctionFactory.Create(knowledgeBaseTools.SearchKnowledgeBase)
             ]
         );
 
         // Step 2: Quick Synthesis Agent
-        var synthesisAgent = _chatClient.CreateAIAgent(
+        var synthesisAgent = chatClient.CreateAIAgent(
             instructions: @"You are a quick synthesis specialist. Your job is to:
 1. Take the search results and create a clear, concise answer
 2. Focus on directly answering the question
@@ -119,13 +109,13 @@ public class ResearchWorkflow
             name: "QuickSynthesisAgent"
         );
 
-        _logger.LogInformation("Creating fast sequential workflow: Search → Synthesis");
+        logger.LogInformation("Creating fast sequential workflow: Search → Synthesis");
 
         // Build sequential workflow
         Workflow workflow = AgentWorkflowBuilder
             .BuildSequential(searchAgent, synthesisAgent);
 
-        _logger.LogInformation("Fast research workflow created successfully");
+        logger.LogInformation("Fast research workflow created successfully");
 
         // Convert workflow to agent
         return await workflow.AsAgentAsync();

@@ -1,5 +1,3 @@
-using Azure;
-using Azure.AI.OpenAI;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Scalar.AspNetCore;
@@ -8,7 +6,6 @@ using SemanticHub.IngestionService.Models;
 using SemanticHub.IngestionService.Services;
 using SemanticHub.IngestionService.Tools;
 using SemanticHub.ServiceDefaults;
-using OpenAI.Embeddings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,39 +25,20 @@ ingestionOptions.ConfigureFromAspireServiceDiscovery(builder.Configuration);
 
 builder.Services.AddSingleton(ingestionOptions);
 
-builder.AddAzureOpenAIClient("openai");
-
-builder.Services.AddSingleton<EmbeddingClient>(provider =>
+var openAiClientBuilder = builder.AddAzureOpenAIClient("openai");
+if (string.IsNullOrWhiteSpace(ingestionOptions.AzureOpenAI.EmbeddingDeployment))
 {
-    var options = provider.GetRequiredService<IngestionOptions>();
-    if (string.IsNullOrWhiteSpace(options.AzureOpenAI.EmbeddingDeployment))
-    {
-        throw new InvalidOperationException("Ingestion:AzureOpenAI:EmbeddingDeployment must be configured.");
-    }
+    throw new InvalidOperationException("Ingestion:AzureOpenAI:EmbeddingDeployment must be configured.");
+}
 
-    var openAiClient = provider.GetRequiredService<AzureOpenAIClient>();
-    return openAiClient.GetEmbeddingClient(options.AzureOpenAI.EmbeddingDeployment);
-});
+openAiClientBuilder.AddEmbeddingGenerator(ingestionOptions.AzureOpenAI.EmbeddingDeployment);
 
+builder.AddAzureSearchClient("search");
 builder.Services.AddSingleton(provider =>
 {
     var options = provider.GetRequiredService<IngestionOptions>();
-    if (string.IsNullOrEmpty(options.AzureSearch.Endpoint) || string.IsNullOrEmpty(options.AzureSearch.ApiKey))
-    {
-        throw new InvalidOperationException("Ingestion:AzureSearch settings are incomplete. Ensure endpoint and API key are configured.");
-    }
-
-    var endpoint = new Uri(options.AzureSearch.Endpoint);
-    var credential = new AzureKeyCredential(options.AzureSearch.ApiKey);
-    return new SearchClient(endpoint, options.AzureSearch.IndexName, credential);
-});
-
-builder.Services.AddSingleton(provider =>
-{
-    var options = provider.GetRequiredService<IngestionOptions>();
-    var endpoint = new Uri(options.AzureSearch.Endpoint);
-    var credential = new AzureKeyCredential(options.AzureSearch.ApiKey);
-    return new SearchIndexClient(endpoint, credential);
+    var indexClient = provider.GetRequiredService<SearchIndexClient>();
+    return indexClient.GetSearchClient(options.AzureSearch.IndexName);
 });
 
 builder.Services.AddSingleton<SearchIndexInitializer>();

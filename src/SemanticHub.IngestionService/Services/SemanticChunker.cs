@@ -8,24 +8,12 @@ namespace SemanticHub.IngestionService.Services;
 /// Intelligent semantic chunking service for Markdown documents
 /// Chunks based on document structure (headers, paragraphs) rather than fixed sizes
 /// </summary>
-public class SemanticChunker
+public class SemanticChunker(
+    ILogger<SemanticChunker> logger,
+    int targetChunkSize = 512,
+    int maxChunkSize = 1024,
+    double overlapPercentage = 0.1)
 {
-    private readonly ILogger<SemanticChunker> _logger;
-    private readonly int _targetChunkSize;
-    private readonly int _maxChunkSize;
-    private readonly double _overlapPercentage;
-
-    public SemanticChunker(
-        ILogger<SemanticChunker> logger,
-        int targetChunkSize = 512,
-        int maxChunkSize = 1024,
-        double overlapPercentage = 0.1)
-    {
-        _logger = logger;
-        _targetChunkSize = targetChunkSize;
-        _maxChunkSize = maxChunkSize;
-        _overlapPercentage = overlapPercentage;
-    }
 
     /// <summary>
     /// Chunk a Markdown document semantically
@@ -35,7 +23,7 @@ public class SemanticChunker
         string documentId,
         DocumentMetadata metadata)
     {
-        _logger.LogInformation("Chunking document: {DocumentId}", documentId);
+        logger.LogInformation("Chunking document: {DocumentId}", documentId);
 
         var chunks = new List<DocumentChunk>();
         var sections = ParseMarkdownSections(markdownContent);
@@ -46,7 +34,7 @@ public class SemanticChunker
         foreach (var section in sections)
         {
             // If section is small enough, create a single chunk
-            if (EstimateTokenCount(section.Content) <= _targetChunkSize)
+            if (EstimateTokenCount(section.Content) <= targetChunkSize)
             {
                 var chunk = new DocumentChunk
                 {
@@ -75,7 +63,7 @@ public class SemanticChunker
             }
         }
 
-        _logger.LogInformation("Created {Count} chunks for document: {DocumentId}", chunks.Count, documentId);
+        logger.LogInformation("Created {Count} chunks for document: {DocumentId}", chunks.Count, documentId);
         return chunks;
     }
 
@@ -153,7 +141,7 @@ public class SemanticChunker
         var currentChunk = new StringBuilder();
         int chunkIndex = startChunkIndex;
         int currentPosition = startPosition;
-        int overlapTokens = (int)(_targetChunkSize * _overlapPercentage);
+        int overlapTokens = (int)(targetChunkSize * overlapPercentage);
 
         // Keep track of last few paragraphs for overlap
         var recentParagraphs = new Queue<string>();
@@ -163,7 +151,7 @@ public class SemanticChunker
             var paragraphTokens = EstimateTokenCount(paragraph);
 
             // If single paragraph exceeds max size, split it by sentences
-            if (paragraphTokens > _maxChunkSize)
+            if (paragraphTokens > maxChunkSize)
             {
                 // Save current chunk if it has content
                 if (currentChunk.Length > 0)
@@ -184,7 +172,7 @@ public class SemanticChunker
                 var sentences = SplitIntoSentences(paragraph);
                 foreach (var sentence in sentences)
                 {
-                    if (EstimateTokenCount(currentChunk.ToString() + sentence) > _targetChunkSize)
+                    if (EstimateTokenCount(currentChunk.ToString() + sentence) > targetChunkSize)
                     {
                         // Create chunk
                         if (currentChunk.Length > 0)
@@ -208,7 +196,7 @@ public class SemanticChunker
             {
                 // Check if adding this paragraph would exceed target size
                 var potentialContent = currentChunk.ToString() + "\n\n" + paragraph;
-                if (EstimateTokenCount(potentialContent) > _targetChunkSize && currentChunk.Length > 0)
+                if (EstimateTokenCount(potentialContent) > targetChunkSize && currentChunk.Length > 0)
                 {
                     // Create chunk with current content
                     chunks.Add(CreateChunk(
@@ -340,7 +328,7 @@ public class SemanticChunker
     public List<DocumentChunk> ChunkDocuments(
         List<(string content, string documentId, DocumentMetadata metadata)> documents)
     {
-        _logger.LogInformation("Chunking {Count} documents", documents.Count);
+        logger.LogInformation("Chunking {Count} documents", documents.Count);
 
         var allChunks = new List<DocumentChunk>();
 
@@ -353,11 +341,11 @@ public class SemanticChunker
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to chunk document: {DocumentId}", documentId);
+                logger.LogError(ex, "Failed to chunk document: {DocumentId}", documentId);
             }
         }
 
-        _logger.LogInformation("Created total of {Count} chunks from {DocCount} documents",
+        logger.LogInformation("Created total of {Count} chunks from {DocCount} documents",
             allChunks.Count, documents.Count);
 
         return allChunks;

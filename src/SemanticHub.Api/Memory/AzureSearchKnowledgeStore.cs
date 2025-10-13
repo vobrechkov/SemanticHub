@@ -1,9 +1,10 @@
 using Azure;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Models;
-using OpenAI.Embeddings;
+using Microsoft.Extensions.AI;
 using SemanticHub.Api.Configuration;
 using System.Text.Json;
+using System.Linq;
 
 namespace SemanticHub.Api.Memory;
 
@@ -48,13 +49,13 @@ public interface IAzureSearchKnowledgeStore
 /// </summary>
 public sealed class AzureSearchKnowledgeStore(
     SearchClient searchClient,
-    EmbeddingClient embeddingClient,
+    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     AgentFrameworkOptions options,
     ILogger<AzureSearchKnowledgeStore> logger)
     : IAzureSearchKnowledgeStore
 {
     private readonly SearchClient _searchClient = searchClient;
-    private readonly EmbeddingClient _embeddingClient = embeddingClient;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator = embeddingGenerator;
     private readonly AgentFrameworkOptions _options = options;
     private readonly ILogger<AzureSearchKnowledgeStore> _logger = logger;
     private readonly EmbeddingGenerationOptions _embeddingOptions = new();
@@ -97,7 +98,7 @@ public sealed class AzureSearchKnowledgeStore(
         var results = response.Value.GetResults().ToList();
         if (results.Count == 0)
         {
-            return Array.Empty<KnowledgeRecord>();
+            return [];
         }
 
         var maxScore = results.Max(r => r.Score ?? 0d);
@@ -219,6 +220,7 @@ public sealed class AzureSearchKnowledgeStore(
         if (!string.IsNullOrEmpty(_semanticConfig))
         {
             options.QueryType = SearchQueryType.Semantic;
+            options.SemanticSearch ??= new SemanticSearchOptions();
             options.SemanticSearch.SemanticConfigurationName = _semanticConfig;
         }
 
@@ -250,19 +252,20 @@ public sealed class AzureSearchKnowledgeStore(
 
         try
         {
-            var embeddingResponse = await _embeddingClient.GenerateEmbeddingsAsync(
+            var embeddingResult = await _embeddingGenerator.GenerateAsync(
                 new[] { query },
                 _embeddingOptions,
                 cancellationToken);
 
-            var embeddingCollection = embeddingResponse.Value;
-            if (embeddingCollection.Count == 0)
+            if (embeddingResult.Count == 0)
             {
                 _logger.LogWarning("Embedding generation returned no data for query '{Query}'", query);
                 return;
             }
 
-            var embedding = embeddingCollection[0].ToFloats().ToArray();
+            var embedding = embeddingResult[0].Vector.ToArray();
+
+            options.VectorSearch ??= new VectorSearchOptions();
 
             var vectorQuery = new VectorizedQuery(embedding)
             {

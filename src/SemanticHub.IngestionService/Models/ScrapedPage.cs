@@ -28,12 +28,12 @@ public class ScrapedPage
     /// <summary>
     /// Extracted metadata
     /// </summary>
-    public Dictionary<string, string> Metadata { get; set; } = new();
+    public Dictionary<string, string> Metadata { get; set; } = [];
 
     /// <summary>
     /// Links found on this page (for recursive crawling)
     /// </summary>
-    public List<string> Links { get; set; } = new();
+    public List<string> Links { get; set; } = [];
 
     /// <summary>
     /// When the page was scraped

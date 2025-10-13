@@ -11,7 +11,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add Aspire service defaults (health checks, service discovery, telemetry)
 builder.AddServiceDefaults();
-builder.AddAzureOpenAIClient("openai");
+var openAiClientBuilder = builder.AddAzureOpenAIClient("openai");
+builder.AddAzureSearchClient("search");
 
 // Add OpenAPI/Swagger
 builder.Services.AddOpenApi("v1", options => options
@@ -28,13 +29,19 @@ var agentOptions = builder.Configuration.GetSection(AgentFrameworkOptions.Sectio
     .Get<AgentFrameworkOptions>()
     ?? new AgentFrameworkOptions();
 
-// TODO: Rename to `ConfigureFromServiceDiscovery`.
-agentOptions.ConfigureFromAspireServiceDiscovery(builder.Configuration);
+agentOptions.ConfigureFromServiceDiscovery(builder.Configuration);
+if (string.IsNullOrWhiteSpace(agentOptions.AzureOpenAI.EmbeddingDeployment))
+{
+    throw new InvalidOperationException("AgentFramework:AzureOpenAI:EmbeddingDeployment must be configured.");
+}
+
+openAiClientBuilder.AddEmbeddingGenerator(agentOptions.AzureOpenAI.EmbeddingDeployment);
 
 builder.Services.AddHttpClient<IngestionClient>("ingestion", client =>
 {
     client.BaseAddress = new Uri("https+http://ingestion");
 });
+
 
 // Add Microsoft Agent Framework services
 builder.Services.AddAgentFramework(builder.Configuration);

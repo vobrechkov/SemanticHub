@@ -50,7 +50,8 @@ public static class WorkflowEndpoints
     {
         try
         {
-            logger.LogInformation("Starting ingestion workflow for workflow ID: {WorkflowId}", request.WorkflowId);
+            const string workflowName = "knowledge-ingestion";
+            logger.LogInformation("Starting ingestion workflow '{WorkflowName}'", workflowName);
 
             // Get document content from parameters
             if (request.Parameters == null || !request.Parameters.TryGetValue("document", out var documentObj))
@@ -75,7 +76,7 @@ public static class WorkflowEndpoints
             var executionId = Guid.NewGuid().ToString();
             var responseMessage = result.ToString() ?? "Workflow completed";
 
-            logger.LogInformation("Ingestion workflow completed successfully. Execution ID: {ExecutionId}", executionId);
+            logger.LogInformation("Ingestion workflow '{WorkflowName}' completed successfully. Execution ID: {ExecutionId}", workflowName, executionId);
 
             return Results.Ok(new WorkflowExecutionResponse
             {
@@ -111,7 +112,8 @@ public static class WorkflowEndpoints
     {
         try
         {
-            logger.LogInformation("Starting research workflow for workflow ID: {WorkflowId}", request.WorkflowId);
+            const string workflowName = "research";
+            logger.LogInformation("Starting research workflow '{WorkflowName}'", workflowName);
 
             // Get research query from parameters
             if (request.Parameters == null || !request.Parameters.TryGetValue("query", out var queryObj))
@@ -136,7 +138,7 @@ public static class WorkflowEndpoints
             var executionId = Guid.NewGuid().ToString();
             var responseMessage = result.ToString() ?? "Research completed";
 
-            logger.LogInformation("Research workflow completed successfully. Execution ID: {ExecutionId}", executionId);
+            logger.LogInformation("Research workflow '{WorkflowName}' completed successfully. Execution ID: {ExecutionId}", workflowName, executionId);
 
             return Results.Ok(new WorkflowExecutionResponse
             {
@@ -174,7 +176,8 @@ public static class WorkflowEndpoints
     {
         try
         {
-            logger.LogInformation("Starting fast research workflow for workflow ID: {WorkflowId}", request.WorkflowId);
+            const string workflowName = "fast-research";
+            logger.LogInformation("Starting fast research workflow '{WorkflowName}'", workflowName);
 
             // Get research query from parameters
             if (request.Parameters == null || !request.Parameters.TryGetValue("query", out var queryObj))
@@ -199,7 +202,7 @@ public static class WorkflowEndpoints
             var executionId = Guid.NewGuid().ToString();
             var responseMessage = result.ToString() ?? "Fast research completed";
 
-            logger.LogInformation("Fast research workflow completed successfully. Execution ID: {ExecutionId}", executionId);
+            logger.LogInformation("Fast research workflow '{WorkflowName}' completed successfully. Execution ID: {ExecutionId}", workflowName, executionId);
 
             return Results.Ok(new WorkflowExecutionResponse
             {

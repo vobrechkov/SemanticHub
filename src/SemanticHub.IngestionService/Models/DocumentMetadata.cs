@@ -48,10 +48,10 @@ public class DocumentMetadata
     /// <summary>
     /// Tags or keywords
     /// </summary>
-    public List<string> Tags { get; set; } = new();
+    public List<string> Tags { get; set; } = [];
 
     /// <summary>
     /// Additional custom metadata
     /// </summary>
-    public Dictionary<string, object> CustomMetadata { get; set; } = new();
+    public Dictionary<string, object> CustomMetadata { get; set; } = [];
 }

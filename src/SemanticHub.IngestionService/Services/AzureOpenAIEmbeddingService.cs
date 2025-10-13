@@ -1,4 +1,4 @@
-using OpenAI.Embeddings;
+using Microsoft.Extensions.AI;
 using SemanticHub.IngestionService.Configuration;
 
 namespace SemanticHub.IngestionService.Services;
@@ -8,25 +8,26 @@ namespace SemanticHub.IngestionService.Services;
 /// </summary>
 public class AzureOpenAIEmbeddingService
 {
-    private readonly EmbeddingClient _embeddingClient;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly EmbeddingGenerationOptions _embeddingOptions;
     private readonly IngestionOptions _options;
     private readonly ILogger<AzureOpenAIEmbeddingService> _logger;
 
     public AzureOpenAIEmbeddingService(
-        EmbeddingClient embeddingClient,
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IngestionOptions options,
         ILogger<AzureOpenAIEmbeddingService> logger)
     {
-        _embeddingClient = embeddingClient ?? throw new ArgumentNullException(nameof(embeddingClient));
+        _embeddingGenerator = embeddingGenerator;
         _options = options;
         _logger = logger;
-        _embeddingOptions = new EmbeddingGenerationOptions
+        _embeddingOptions = new EmbeddingGenerationOptions();
+
+        if (options.AzureSearch.VectorDimensions > 0)
         {
-            Dimensions = options.AzureSearch.VectorDimensions > 0
-                ? options.AzureSearch.VectorDimensions
-                : null
-        };
+            _embeddingOptions.AdditionalProperties ??= [];
+            _embeddingOptions.AdditionalProperties["dimensions"] = options.AzureSearch.VectorDimensions;
+        }
     }
 
     public async Task<IReadOnlyList<float[]>> GenerateEmbeddingsAsync(
@@ -35,7 +36,7 @@ public class AzureOpenAIEmbeddingService
     {
         if (inputs.Count == 0)
         {
-            return Array.Empty<float[]>();
+            return [];
         }
 
         if (string.IsNullOrEmpty(_options.AzureOpenAI.EmbeddingDeployment))
@@ -43,17 +44,16 @@ public class AzureOpenAIEmbeddingService
             throw new InvalidOperationException("Azure OpenAI embedding deployment is not configured.");
         }
 
-        var response = await _embeddingClient.GenerateEmbeddingsAsync(
+        var response = await _embeddingGenerator.GenerateAsync(
             inputs,
             _embeddingOptions,
             cancellationToken);
 
-        var collection = response.Value;
-        var embeddings = new List<float[]>(collection.Count);
+        var embeddings = new List<float[]>(response.Count);
 
-        foreach (var item in collection)
+        foreach (var item in response)
         {
-            embeddings.Add(item.ToFloats().ToArray());
+            embeddings.Add(item.Vector.ToArray());
         }
 
         if (embeddings.Count != inputs.Count)

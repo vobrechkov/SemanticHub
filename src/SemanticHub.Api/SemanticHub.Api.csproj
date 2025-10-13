@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="9.5.1-preview.1.25502.11" />
+    <PackageReference Include="Aspire.Azure.Search.Documents" Version="9.5.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
 
     <!-- Microsoft Agent Framework packages (Preview) -->
@@ -17,7 +18,6 @@
 
     <!-- Azure OpenAI and Identity -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.3.0-beta.2" />
-    <PackageReference Include="Azure.Identity" Version="1.*" />
     <PackageReference Include="Azure.Search.Documents" Version="11.*" />
 
     <!-- Microsoft.Extensions.AI for IChatClient -->

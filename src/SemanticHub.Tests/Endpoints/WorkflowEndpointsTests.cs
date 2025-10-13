@@ -14,7 +14,6 @@ public class WorkflowEndpointsTests
         // Arrange
         var request = new WorkflowExecutionRequest
         {
-            WorkflowId = "test-workflow",
             Parameters = new Dictionary<string, object>
             {
                 ["document"] = "# Test Document\n\nThis is test content."
@@ -34,7 +33,6 @@ public class WorkflowEndpointsTests
         // Arrange
         var request = new WorkflowExecutionRequest
         {
-            WorkflowId = "test-workflow",
             Parameters = new Dictionary<string, object>
             {
                 ["wrongKey"] = "some value"
@@ -58,7 +56,6 @@ public class WorkflowEndpointsTests
         // Arrange
         var request = new WorkflowExecutionRequest
         {
-            WorkflowId = "research-workflow",
             Parameters = new Dictionary<string, object>
             {
                 ["query"] = "What is semantic kernel?"
@@ -78,7 +75,6 @@ public class WorkflowEndpointsTests
         // Arrange
         var request = new WorkflowExecutionRequest
         {
-            WorkflowId = "research-workflow",
             Parameters = new Dictionary<string, object>
             {
                 ["wrongKey"] = "some value"
@@ -97,7 +93,6 @@ public class WorkflowEndpointsTests
         // Arrange
         var request = new WorkflowExecutionRequest
         {
-            WorkflowId = "fast-research-workflow",
             Parameters = new Dictionary<string, object>
             {
                 ["query"] = "Quick question about AI?"

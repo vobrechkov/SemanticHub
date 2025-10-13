@@ -7,21 +7,11 @@ namespace SemanticHub.Api.Tools;
 /// <summary>
 /// AI agent tools for interacting with the Azure AI Search backed knowledge base.
 /// </summary>
-public class KnowledgeBaseTools
+public class KnowledgeBaseTools(
+    ILogger<KnowledgeBaseTools> logger,
+    IAzureSearchKnowledgeStore knowledgeStore,
+    AgentFrameworkOptions options)
 {
-    private readonly ILogger<KnowledgeBaseTools> _logger;
-    private readonly IAzureSearchKnowledgeStore _knowledgeStore;
-    private readonly AgentFrameworkOptions _options;
-
-    public KnowledgeBaseTools(
-        ILogger<KnowledgeBaseTools> logger,
-        IAzureSearchKnowledgeStore knowledgeStore,
-        AgentFrameworkOptions options)
-    {
-        _logger = logger;
-        _knowledgeStore = knowledgeStore;
-        _options = options;
-    }
 
     /// <summary>
     /// Searches the knowledge base for relevant information.
@@ -35,12 +25,12 @@ public class KnowledgeBaseTools
     {
         try
         {
-            var effectiveLimit = limit > 0 ? limit : _options.Memory.AzureSearch.MaxResults;
-            var effectiveMinRelevance = minRelevance > 0 ? minRelevance : _options.Memory.AzureSearch.MinRelevance;
+            var effectiveLimit = limit > 0 ? limit : options.Memory.AzureSearch.MaxResults;
+            var effectiveMinRelevance = minRelevance > 0 ? minRelevance : options.Memory.AzureSearch.MinRelevance;
 
-            _logger.LogInformation("Searching Azure AI Search index with query: {Query}", query);
+            logger.LogInformation("Searching Azure AI Search index with query: {Query}", query);
 
-            var results = await _knowledgeStore.SearchAsync(
+            var results = await knowledgeStore.SearchAsync(
                 query,
                 effectiveLimit,
                 effectiveMinRelevance,
@@ -72,7 +62,7 @@ public class KnowledgeBaseTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error searching Azure AI Search knowledge base");
+            logger.LogError(ex, "Error searching Azure AI Search knowledge base");
             return $"Error searching knowledge base: {ex.Message}";
         }
     }
@@ -87,9 +77,9 @@ public class KnowledgeBaseTools
     {
         try
         {
-            _logger.LogInformation("Checking Azure AI Search for document: {DocumentId}", documentId);
+            logger.LogInformation("Checking Azure AI Search for document: {DocumentId}", documentId);
 
-            var document = await _knowledgeStore.TryGetDocumentAsync(documentId, cancellationToken);
+            var document = await knowledgeStore.TryGetDocumentAsync(documentId, cancellationToken);
 
             if (document is null)
             {
@@ -112,7 +102,7 @@ public class KnowledgeBaseTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving document status from Azure AI Search");
+            logger.LogError(ex, "Error retrieving document status from Azure AI Search");
             return $"Error retrieving document status: {ex.Message}";
         }
     }
@@ -127,10 +117,10 @@ public class KnowledgeBaseTools
     {
         try
         {
-            var effectiveLimit = limit > 0 ? limit : _options.Memory.AzureSearch.MaxResults;
-            _logger.LogInformation("Listing up to {Limit} documents from Azure AI Search", effectiveLimit);
+            var effectiveLimit = limit > 0 ? limit : options.Memory.AzureSearch.MaxResults;
+            logger.LogInformation("Listing up to {Limit} documents from Azure AI Search", effectiveLimit);
 
-            var documents = await _knowledgeStore.ListDocumentsAsync(effectiveLimit, cancellationToken);
+            var documents = await knowledgeStore.ListDocumentsAsync(effectiveLimit, cancellationToken);
 
             if (documents.Count == 0)
             {
@@ -154,7 +144,7 @@ public class KnowledgeBaseTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error listing documents from Azure AI Search");
+            logger.LogError(ex, "Error listing documents from Azure AI Search");
             return $"Error listing documents: {ex.Message}";
         }
     }

@@ -8,24 +8,18 @@ namespace SemanticHub.IngestionService.Tools;
 /// Web scraping tool using Playwright for JS-rendered content
 /// Supports single-page, recursive crawling, and sitemap-based scraping
 /// </summary>
-public class WebScraperTool
+public class WebScraperTool(ILogger<WebScraperTool> logger)
 {
-    private readonly ILogger<WebScraperTool> _logger;
     private IBrowser? _browser;
-    private readonly HashSet<string> _visitedUrls = new();
+    private readonly HashSet<string> _visitedUrls = [];
     private readonly SemaphoreSlim _concurrencyLimit = new(3); // Max 3 concurrent pages
-
-    public WebScraperTool(ILogger<WebScraperTool> logger)
-    {
-        _logger = logger;
-    }
 
     /// <summary>
     /// Initialize Playwright and browser
     /// </summary>
     public async Task InitializeAsync()
     {
-        _logger.LogInformation("Initializing Playwright browser");
+        logger.LogInformation("Initializing Playwright browser");
         var playwright = await Playwright.CreateAsync();
         _browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
@@ -43,7 +37,7 @@ public class WebScraperTool
             await InitializeAsync();
         }
 
-        _logger.LogInformation("Scraping single page: {Url}", url);
+        logger.LogInformation("Scraping single page: {Url}", url);
 
         var page = await _browser!.NewPageAsync();
         try
@@ -79,17 +73,17 @@ public class WebScraperTool
                 Title = title,
                 HtmlContent = htmlContent,
                 Metadata = metadata,
-                Links = links?.ToList() ?? new List<string>(),
+                Links = links?.ToList() ?? [],
                 StatusCode = response.Status,
                 ScrapedAt = DateTime.UtcNow
             };
 
-            _logger.LogInformation("Successfully scraped page: {Title} ({Url})", title, url);
+            logger.LogInformation("Successfully scraped page: {Title} ({Url})", title, url);
             return scrapedPage;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error scraping page: {Url}", url);
+            logger.LogError(ex, "Error scraping page: {Url}", url);
             return new ScrapedPage
             {
                 Url = url,
@@ -123,7 +117,7 @@ public class WebScraperTool
             await InitializeAsync();
         }
 
-        _logger.LogInformation("Starting recursive crawl from {Url} with max depth {MaxDepth}", startUrl, maxDepth);
+        logger.LogInformation("Starting recursive crawl from {Url} with max depth {MaxDepth}", startUrl, maxDepth);
 
         _visitedUrls.Clear();
         var results = new List<ScrapedPage>();
@@ -131,7 +125,7 @@ public class WebScraperTool
         urlsToVisit.Enqueue((startUrl, 0));
 
         var startUri = new Uri(startUrl);
-        var allowedDomainsSet = allowedDomains?.ToHashSet() ?? new HashSet<string> { startUri.Host };
+        var allowedDomainsSet = allowedDomains?.ToHashSet() ?? [startUri.Host];
 
         while (urlsToVisit.Count > 0 && results.Count < maxPages && !cancellationToken.IsCancellationRequested)
         {
@@ -189,7 +183,7 @@ public class WebScraperTool
             }
         }
 
-        _logger.LogInformation("Recursive crawl completed. Scraped {Count} pages", results.Count);
+        logger.LogInformation("Recursive crawl completed. Scraped {Count} pages", results.Count);
         return results;
     }
 
@@ -201,14 +195,14 @@ public class WebScraperTool
         int maxPages = 100,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Scraping sitemap: {SitemapUrl}", sitemapUrl);
+        logger.LogInformation("Scraping sitemap: {SitemapUrl}", sitemapUrl);
 
         // Download and parse sitemap
         using var httpClient = new HttpClient();
         var sitemapXml = await httpClient.GetStringAsync(sitemapUrl, cancellationToken);
         var urls = ParseSitemap(sitemapXml);
 
-        _logger.LogInformation("Found {Count} URLs in sitemap", urls.Count);
+        logger.LogInformation("Found {Count} URLs in sitemap", urls.Count);
 
         var results = new List<ScrapedPage>();
         var urlsToScrape = urls.Take(maxPages).ToList();
@@ -238,7 +232,7 @@ public class WebScraperTool
             }
         }
 
-        _logger.LogInformation("Sitemap scraping completed. Scraped {Count} pages", results.Count);
+        logger.LogInformation("Sitemap scraping completed. Scraped {Count} pages", results.Count);
         return results;
     }
 
@@ -289,7 +283,7 @@ public class WebScraperTool
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error extracting metadata from page");
+            logger.LogWarning(ex, "Error extracting metadata from page");
         }
 
         return metadata;
@@ -322,7 +316,7 @@ public class WebScraperTool
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error parsing sitemap XML");
+            logger.LogError(ex, "Error parsing sitemap XML");
         }
 
         return urls;

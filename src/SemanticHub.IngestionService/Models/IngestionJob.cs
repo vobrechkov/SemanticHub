@@ -58,12 +58,12 @@ public class IngestionJob
     /// <summary>
     /// Additional job configuration
     /// </summary>
-    public Dictionary<string, object> Configuration { get; set; } = new();
+    public Dictionary<string, object> Configuration { get; set; } = [];
 
     /// <summary>
     /// Progress messages and logs
     /// </summary>
-    public List<string> Logs { get; set; } = new();
+    public List<string> Logs { get; set; } = [];
 }
 
 /// <summary>

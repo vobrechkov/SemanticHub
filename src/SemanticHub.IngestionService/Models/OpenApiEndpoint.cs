@@ -41,12 +41,12 @@ public class OpenApiEndpoint
     /// <summary>
     /// Tags/categories for this endpoint
     /// </summary>
-    public List<string> Tags { get; set; } = new();
+    public List<string> Tags { get; set; } = [];
 
     /// <summary>
     /// Parameters (path, query, header, cookie) - uses built-in OpenAPI model
     /// </summary>
-    public IList<OpenApiParameter> Parameters { get; set; } = new List<OpenApiParameter>();
+    public IList<OpenApiParameter> Parameters { get; set; } = [];
 
     /// <summary>
     /// Request body schema and examples - uses built-in OpenAPI model
@@ -56,17 +56,17 @@ public class OpenApiEndpoint
     /// <summary>
     /// Response schemas and examples - uses built-in OpenAPI model
     /// </summary>
-    public OpenApiResponses Responses { get; set; } = new();
+    public OpenApiResponses Responses { get; set; } = [];
 
     /// <summary>
     /// Security requirements
     /// </summary>
-    public List<string> Security { get; set; } = new();
+    public List<string> Security { get; set; } = [];
 
     /// <summary>
     /// Servers where this operation is available
     /// </summary>
-    public List<string> Servers { get; set; } = new();
+    public List<string> Servers { get; set; } = [];
 
     /// <summary>
     /// API version
