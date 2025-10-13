@@ -1,5 +1,6 @@
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Models;
+using SemanticHub.IngestionService.Tools;
 
 namespace SemanticHub.IngestionService.Services;
 
@@ -13,8 +14,57 @@ public class DocumentIngestionService(
     AzureSearchIndexer indexer,
     SearchIndexInitializer indexInitializer,
     IngestionOptions options,
-    MarkdownConverter markdownConverter)
+    MarkdownConverter markdownConverter,
+    WebScraperTool webScraperTool)
 {
+    public async Task<DocumentIngestionResult> IngestWebPageAsync(
+        WebPageIngestionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(request.Url))
+        {
+            throw new ArgumentException("Request URL must not be empty.", nameof(request));
+        }
+
+        logger.LogInformation("Scraping and ingesting web page: {Url}", request.Url);
+
+        var scrapedPage = await webScraperTool.ScrapeSinglePageAsync(request.Url, cancellationToken);
+        if (!scrapedPage.IsSuccess || string.IsNullOrWhiteSpace(scrapedPage.HtmlContent))
+        {
+            logger.LogWarning("Failed to scrape content from {Url}. Status code: {StatusCode}", request.Url, scrapedPage.StatusCode);
+            return new DocumentIngestionResult
+            {
+                Success = false,
+                DocumentId = request.DocumentId ?? request.Url,
+                IndexName = options.AzureSearch.IndexName,
+                ChunksIndexed = 0,
+                Message = $"Failed to scrape content from '{request.Url}'."
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            scrapedPage.Title = request.Title!;
+        }
+
+        var markdownContent = markdownConverter.ConvertToMarkdown(scrapedPage);
+
+        var markdownRequest = new MarkdownIngestionRequest
+        {
+            DocumentId = request.DocumentId,
+            Title = request.Title ?? scrapedPage.Title,
+            SourceUrl = request.Url,
+            SourceType = "webpage",
+            Tags = request.Tags,
+            Metadata = request.Metadata,
+            Content = markdownContent
+        };
+
+        return await IngestMarkdownAsync(markdownRequest, cancellationToken);
+    }
+
     public async Task<DocumentIngestionResult> IngestMarkdownAsync(
         MarkdownIngestionRequest request,
         CancellationToken cancellationToken = default)

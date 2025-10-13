@@ -42,6 +42,37 @@ public class MarkdownIngestionRequest
 }
 
 /// <summary>
+/// Request payload for scraping and ingesting a web page.
+/// </summary>
+public class WebPageIngestionRequest
+{
+    /// <summary>
+    /// URL of the page to scrape.
+    /// </summary>
+    public required string Url { get; set; }
+
+    /// <summary>
+    /// Optional identifier for the resulting document.
+    /// </summary>
+    public string? DocumentId { get; set; }
+
+    /// <summary>
+    /// Optional override for the document title.
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// Optional tags to apply to the ingested document.
+    /// </summary>
+    public List<string>? Tags { get; set; }
+
+    /// <summary>
+    /// Additional metadata to attach to the document.
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; set; }
+}
+
+/// <summary>
 /// Response from the ingestion service describing the outcome.
 /// </summary>
 public class IngestionResponse

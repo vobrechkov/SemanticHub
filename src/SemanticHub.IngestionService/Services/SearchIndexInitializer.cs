@@ -170,7 +170,8 @@ public class SearchIndexInitializer(
             Fields = searchFields
         };
 
-        if (!string.IsNullOrEmpty(options.AzureSearch.SemanticConfiguration))
+        if (options.AzureSearch.EnableSemanticRanker &&
+            !string.IsNullOrEmpty(options.AzureSearch.SemanticConfiguration))
         {
             index.SemanticSearch = new SemanticSearch
             {

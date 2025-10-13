@@ -13,6 +13,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 var openAiClientBuilder = builder.AddAzureOpenAIClient("openai");
 
+// Add Azure Blob Storage client
+builder.AddAzureBlobServiceClient("blobs");
+
 // Add OpenAPI/Swagger
 builder.Services.AddOpenApi("v1", options => options
     .AddDocumentTransformer((document, context, cancellationToken) =>

@@ -31,7 +31,16 @@ public class AzureSearchIndexer(
 
     private SearchDocument ToSearchDocument(DocumentChunk chunk)
     {
-        var document = new SearchDocument
+        var document = CreateBaseDocument(chunk);
+        AddOptionalFields(document, chunk);
+        AddVectorField(document, chunk);
+        AddMetadataField(document, chunk);
+        return document;
+    }
+
+    private SearchDocument CreateBaseDocument(DocumentChunk chunk)
+    {
+        return new SearchDocument
         {
             [options.AzureSearch.KeyField] = chunk.Id,
             [options.AzureSearch.ContentField] = chunk.Content,
@@ -40,50 +49,59 @@ public class AzureSearchIndexer(
             ["ingestedAt"] = chunk.Metadata?.IngestedAt ?? DateTimeOffset.UtcNow,
             ["tags"] = chunk.Metadata?.Tags ?? []
         };
+    }
 
-        SetIfConfigured(options.AzureSearch.ParentDocumentField, chunk.ParentDocumentId);
-        SetIfConfigured(options.AzureSearch.TitleField, chunk.Metadata?.Title ?? chunk.Title ?? chunk.ParentDocumentId);
-        SetIfConfigured(options.AzureSearch.SummaryField, BuildSummary(chunk));
-        SetIfConfigured(options.AzureSearch.ChunkIndexField, chunk.ChunkIndex);
+    private void AddOptionalFields(SearchDocument document, DocumentChunk chunk)
+    {
+        SetIfConfigured(document, options.AzureSearch.ParentDocumentField, chunk.ParentDocumentId);
+        SetIfConfigured(document, options.AzureSearch.TitleField, chunk.Metadata?.Title ?? chunk.Title ?? chunk.ParentDocumentId);
+        SetIfConfigured(document, options.AzureSearch.SummaryField, BuildSummary(chunk));
+        SetIfConfigured(document, options.AzureSearch.ChunkIndexField, chunk.ChunkIndex);
 
         if (!string.IsNullOrEmpty(options.AzureSearch.ChunkTitleField))
         {
-            SetIfConfigured(options.AzureSearch.ChunkTitleField, chunk.Title ?? chunk.Metadata?.Title);
+            SetIfConfigured(document, options.AzureSearch.ChunkTitleField, chunk.Title ?? chunk.Metadata?.Title);
         }
+    }
 
+    private void AddVectorField(SearchDocument document, DocumentChunk chunk)
+    {
         if (!string.IsNullOrEmpty(options.AzureSearch.VectorField) && chunk.ContentVector is { Length: > 0 })
         {
             document[options.AzureSearch.VectorField] = chunk.ContentVector;
         }
+    }
 
-        if (!string.IsNullOrEmpty(options.AzureSearch.MetadataField))
+    private void AddMetadataField(SearchDocument document, DocumentChunk chunk)
+    {
+        if (string.IsNullOrEmpty(options.AzureSearch.MetadataField))
         {
-            var metadataPayload = chunk.Metadata?.CustomMetadata?.Count > 0
-                ? JsonSerializer.Serialize(chunk.Metadata.CustomMetadata)
-                : null;
-
-            if (metadataPayload is not null)
-            {
-                document[options.AzureSearch.MetadataField] = metadataPayload;
-            }
+            return;
         }
 
-        return document;
+        var metadataPayload = chunk.Metadata?.CustomMetadata?.Count > 0
+            ? JsonSerializer.Serialize(chunk.Metadata.CustomMetadata)
+            : null;
 
-        void SetIfConfigured(string? fieldName, object? value)
+        if (metadataPayload is not null)
         {
-            if (string.IsNullOrEmpty(fieldName) || value is null)
-            {
-                return;
-            }
-
-            if (value is string s && string.IsNullOrWhiteSpace(s))
-            {
-                return;
-            }
-
-            document[fieldName] = value;
+            document[options.AzureSearch.MetadataField] = metadataPayload;
         }
+    }
+
+    private static void SetIfConfigured(SearchDocument document, string? fieldName, object? value)
+    {
+        if (string.IsNullOrEmpty(fieldName) || value is null)
+        {
+            return;
+        }
+
+        if (value is string s && string.IsNullOrWhiteSpace(s))
+        {
+            return;
+        }
+
+        document[fieldName] = value;
     }
 
     private static string BuildSummary(DocumentChunk chunk)

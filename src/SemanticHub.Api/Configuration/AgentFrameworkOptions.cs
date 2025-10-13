@@ -43,6 +43,7 @@ public class AzureSearchMemoryOptions
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public string IndexName { get; set; } = string.Empty;
+    public bool EnableSemanticRanker { get; set; } = false;
     public string KeyField { get; set; } = "id";
     public string ContentField { get; set; } = "content";
     public string? TitleField { get; set; } = "title";

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Configuration;
 var builder = DistributedApplication.CreateBuilder(args);
 
 var enableAzureSearch = builder.Configuration.GetValue("Features:AzureSearch:Enabled", true);
-var enableOpenSearch = builder.Configuration.GetValue("Features:OpenSearch:Enabled", true);
+var enableOpenSearch = builder.Configuration.GetValue("Features:OpenSearch:Enabled", false);
 
 IResourceBuilder<AzureSearchResource>? search = null;
 if (enableAzureSearch)
@@ -50,6 +50,24 @@ var openai = builder.AddAzureOpenAI("openai")
 var chatDeployment = openai.AddDeployment("chat", "gpt-4o-mini", "2024-07-18");
 var embeddingDeployment = openai.AddDeployment("embedding", "text-embedding-3-small", "1");
 
+// Add Azure Blob Storage with Azurite emulator for local development
+var storage = builder.AddAzureStorage("storage")
+    .RunAsEmulator(container =>
+    {
+        // Configure Azurite to use default ports
+        container.WithLifetime(ContainerLifetime.Persistent);
+    })
+    .ConfigureInfrastructure(infra =>
+    {
+        var storageAccount = infra.GetProvisionableResources()
+            .OfType<Azure.Provisioning.Storage.StorageAccount>()
+            .Single();
+        storageAccount.Name = "semhubeusdevstorage";
+        storageAccount.Location = AzureLocation.EastUS;
+    });
+
+var blobs = storage.AddBlobs("blobs");
+
 IResourceBuilder<ProjectResource>? ingestion = null;
 if (enableAzureSearch && search is not null)
 {
@@ -61,6 +79,7 @@ if (enableAzureSearch && search is not null)
 
 var agentApi = builder.AddProject<Projects.SemanticHub_Api>("agent-api")
     .WithReference(openai).WaitFor(openai)
+    .WithReference(blobs).WaitFor(storage)
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
     .WithEnvironment("AgentFramework__AzureOpenAI__ChatDeployment", chatDeployment.Resource.Name)

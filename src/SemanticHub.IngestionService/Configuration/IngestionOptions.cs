@@ -37,6 +37,8 @@ public class AzureSearchOptions
 
     public string IndexName { get; set; } = string.Empty;
 
+    public bool EnableSemanticRanker { get; set; } = false;
+
     public string KeyField { get; set; } = "id";
 
     public string ContentField { get; set; } = "content";

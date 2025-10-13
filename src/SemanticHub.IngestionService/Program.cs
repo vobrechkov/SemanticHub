@@ -1,4 +1,3 @@
-using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Scalar.AspNetCore;
 using SemanticHub.IngestionService.Configuration;
@@ -98,6 +97,31 @@ app.MapPost("/ingestion/markdown", async (MarkdownIngestionRequest request, Docu
 .WithName("IngestMarkdown")
 .WithSummary("Ingest Markdown content into Azure AI Search")
 .WithDescription("Chunks, embeds, and indexes Markdown content so it can be retrieved by MAF agents.");
+
+app.MapPost("/ingestion/webpage", async (WebPageIngestionRequest request, DocumentIngestionService ingestionService, CancellationToken cancellationToken) =>
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.Url))
+    {
+        return Results.BadRequest(new { error = "Request URL must not be empty." });
+    }
+
+    var result = await ingestionService.IngestWebPageAsync(request, cancellationToken);
+
+    var response = new IngestionResponse
+    {
+        Success = result.Success,
+        DocumentId = result.DocumentId,
+        IndexName = result.IndexName,
+        ChunksIndexed = result.ChunksIndexed,
+        Message = result.Message,
+        ErrorMessage = result.Success ? null : result.Message
+    };
+
+    return Results.Ok(response);
+})
+.WithName("IngestWebPage")
+.WithSummary("Scrape a web page and ingest its content into Azure AI Search")
+.WithDescription("Fetches a web page, converts it to Markdown, then chunks, embeds, and indexes it for retrieval.");
 
 app.MapDefaultEndpoints();
 

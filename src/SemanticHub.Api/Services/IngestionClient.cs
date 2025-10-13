@@ -47,4 +47,42 @@ public class IngestionClient(HttpClient httpClient, ILogger<IngestionClient> log
                 : errorText
         };
     }
+
+    public async Task<IngestionResponse> IngestWebPageAsync(
+        WebPageIngestionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            "/ingestion/webpage",
+            request,
+            cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var payload = await response.Content.ReadFromJsonAsync<IngestionResponse>(
+                cancellationToken: cancellationToken);
+
+            return payload ?? new IngestionResponse
+            {
+                Success = true,
+                DocumentId = request.DocumentId ?? request.Url,
+                IndexName = string.Empty,
+                ChunksIndexed = 0
+            };
+        }
+
+        var errorText = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning("Web ingestion API returned {Status}: {Error}", response.StatusCode, errorText);
+
+        return new IngestionResponse
+        {
+            Success = false,
+            DocumentId = request.DocumentId ?? request.Url,
+            ErrorMessage = string.IsNullOrWhiteSpace(errorText)
+                ? $"Ingestion service returned status {(int)response.StatusCode}"
+                : errorText
+        };
+    }
 }

@@ -31,6 +31,7 @@ public sealed class AzureSearchKnowledgeStore(
     private readonly string? _summaryField = options.Memory.AzureSearch.SummaryField;
     private readonly string? _semanticConfig = options.Memory.AzureSearch.SemanticConfiguration;
     private readonly string? _vectorField = options.Memory.AzureSearch.VectorField;
+    private readonly bool _enableSemanticRanker = options.Memory.AzureSearch.EnableSemanticRanker;
     private readonly int _vectorKNearestNeighbors = Math.Max(1, options.Memory.AzureSearch.VectorKNearestNeighbors);
     private readonly string _parentDocumentField = options.Memory.AzureSearch.ParentDocumentField;
     private readonly string? _chunkTitleField = options.Memory.AzureSearch.ChunkTitleField;
@@ -203,7 +204,7 @@ public sealed class AzureSearchKnowledgeStore(
             QueryType = SearchQueryType.Simple
         };
 
-        if (!string.IsNullOrEmpty(_semanticConfig))
+        if (_enableSemanticRanker && !string.IsNullOrEmpty(_semanticConfig))
         {
             options.QueryType = SearchQueryType.Semantic;
             options.SemanticSearch ??= new SemanticSearchOptions();
