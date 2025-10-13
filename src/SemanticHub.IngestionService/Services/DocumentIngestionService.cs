@@ -27,11 +27,7 @@ public class DocumentIngestionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        if (string.IsNullOrWhiteSpace(request.Url))
-        {
-            throw new ArgumentException("Request URL must not be empty.", nameof(request));
-        }
+        ValidateWebPageRequest(request);
 
         using var activity = IngestionTelemetry.ActivitySource.StartActivity("IngestWebPage");
         activity?.SetTag("ingestion.sourceType", "webpage");
@@ -44,43 +40,11 @@ public class DocumentIngestionService(
         try
         {
             var scrapedPage = await webScraperTool.ScrapeSinglePageAsync(request.Url, cancellationToken);
-            activity?.SetTag("ingestion.scrape.statusCode", scrapedPage.StatusCode);
-
-            var scrapeTags = CreateWebPageTags(scrapedPage.Url ?? request.Url, scrapedPage.IsSuccess ? "success" : "failed");
-
-            if (!scrapedPage.IsSuccess || string.IsNullOrWhiteSpace(scrapedPage.HtmlContent))
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, "ScrapeFailed");
-                IngestionTelemetry.WebPagesScraped.Add(1, scrapeTags);
-
-                logger.LogWarning("Failed to scrape content from {Url}. Status code: {StatusCode}", request.Url, scrapedPage.StatusCode);
-                return BuildFailedWebPageResult(request);
-            }
-
-            IngestionTelemetry.WebPagesScraped.Add(1, scrapeTags);
-
-            if (!string.IsNullOrWhiteSpace(request.Title))
-            {
-                scrapedPage.Title = request.Title!;
-            }
-
-            var markdownContent = markdownConverter.ConvertToMarkdown(scrapedPage);
-            activity?.SetTag("ingestion.scrape.contentLength", markdownContent.Length);
-
-            var markdownRequest = BuildMarkdownRequestFromWebPage(request, scrapedPage, markdownContent);
-
-            stopwatch.Stop();
-            activity?.SetTag("ingestion.scrape.durationMs", stopwatch.Elapsed.TotalMilliseconds);
-
-            return await IngestMarkdownAsync(markdownRequest, cancellationToken);
+            return await HandleScrapedWebPageAsync(request, scrapedPage, activity, stopwatch, cancellationToken);
         }
         catch (Exception ex)
         {
-            stopwatch.Stop();
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            IngestionTelemetry.WebPagesScraped.Add(1, CreateWebPageTags(request.Url, "failed"));
-
-            logger.LogError(ex, "Error ingesting web page {Url}", request.Url);
+            HandleWebPageIngestionException(ex, request, activity, stopwatch);
             throw;
         }
     }
@@ -90,11 +54,7 @@ public class DocumentIngestionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        if (string.IsNullOrWhiteSpace(request.Content))
-        {
-            throw new ArgumentException("Request content must not be empty.", nameof(request));
-        }
+        ValidateHtmlRequest(request);
 
         using var activity = IngestionTelemetry.ActivitySource.StartActivity("IngestHtml");
         activity?.SetTag("ingestion.sourceType", "html");
@@ -103,39 +63,16 @@ public class DocumentIngestionService(
 
         try
         {
-            // Create a scraped page model from the HTML content
-            var scrapedPage = new ScrapedPage
-            {
-                Url = request.SourceUrl ?? "manual",
-                Title = request.Title ?? "Untitled HTML Document",
-                HtmlContent = request.Content,
-                StatusCode = 200,
-                ScrapedAt = DateTime.UtcNow,
-                Metadata = new Dictionary<string, string>()
-            };
+            var scrapedPage = CreateScrapedPageFromHtml(request);
+            var markdownRequest = BuildMarkdownRequestFromHtml(request, scrapedPage);
 
-            // Convert HTML to Markdown
-            var markdownContent = markdownConverter.ConvertToMarkdown(scrapedPage);
-            activity?.SetTag("ingestion.html.contentLength", markdownContent.Length);
-
-            // Build Markdown request
-            var markdownRequest = new MarkdownIngestionRequest
-            {
-                DocumentId = request.DocumentId,
-                Title = request.Title ?? scrapedPage.Title,
-                SourceUrl = request.SourceUrl,
-                SourceType = "html",
-                Tags = request.Tags,
-                Metadata = request.Metadata,
-                Content = markdownContent
-            };
+            activity?.SetTag("ingestion.html.contentLength", markdownRequest.Content.Length);
 
             return await IngestMarkdownAsync(markdownRequest, cancellationToken);
         }
         catch (Exception ex)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            logger.LogError(ex, "Error ingesting HTML content");
+            HandleHtmlIngestionException(ex, activity);
             throw;
         }
     }
@@ -145,11 +82,7 @@ public class DocumentIngestionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        if (string.IsNullOrWhiteSpace(request.BlobPath))
-        {
-            throw new ArgumentException("Request BlobPath must not be empty.", nameof(request));
-        }
+        ValidateBlobIngestionRequest(request);
 
         using var activity = IngestionTelemetry.ActivitySource.StartActivity("IngestFromBlob");
         activity?.SetTag("ingestion.sourceType", "blob");
@@ -161,296 +94,470 @@ public class DocumentIngestionService(
 
         try
         {
-            // Get all blobs matching the path
-            var allBlobs = await blobStorageService.GetBlobsAsync(
-                request.BlobPath,
-                request.ContainerName,
-                cancellationToken);
-
-            // Filter by supported extensions
-            var supportedBlobs = blobStorageService.FilterBySupportedExtensions(
-                allBlobs,
-                ".md", ".markdown", ".yml", ".yaml", ".json", ".html", ".htm");
-
+            var supportedBlobs = await GetSupportedBlobsAsync(request, cancellationToken);
             if (supportedBlobs.Count == 0)
             {
+                stopwatch.Stop();
+                activity?.SetStatus(ActivityStatusCode.Error, "NoSupportedFiles");
                 logger.LogWarning("No supported files found in blob path: {Path}", request.BlobPath);
-                return new BlobIngestionResult
-                {
-                    Success = false,
-                    BlobPath = request.BlobPath,
-                    TotalFiles = 0,
-                    FilesProcessed = 0,
-                    TotalChunksIndexed = 0,
-                    Message = "No supported files found (.md, .yaml, .json, .html)"
-                };
+                return BuildEmptyBlobIngestionResult(request);
             }
 
             activity?.SetTag("ingestion.blob.totalFiles", supportedBlobs.Count);
 
-            var result = new BlobIngestionResult
-            {
-                Success = true,
-                BlobPath = request.BlobPath,
-                TotalFiles = supportedBlobs.Count,
-                FilesProcessed = 0,
-                TotalChunksIndexed = 0
-            };
-
-            // Process files in parallel by type
-            var tasks = new List<Task>();
-
-            var markdownFiles = supportedBlobs.Where(b =>
-                b.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
-                b.Name.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            var yamlFiles = supportedBlobs.Where(b =>
-                b.Name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) ||
-                b.Name.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            var jsonFiles = supportedBlobs.Where(b =>
-                b.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            var htmlFiles = supportedBlobs.Where(b =>
-                b.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
-                b.Name.EndsWith(".htm", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            // Process each file type in parallel
-            if (markdownFiles.Count > 0)
-            {
-                tasks.Add(ProcessMarkdownFilesAsync(markdownFiles, request, result, cancellationToken));
-            }
-
-            if (yamlFiles.Count > 0 || jsonFiles.Count > 0)
-            {
-                var openApiFiles = yamlFiles.Concat(jsonFiles).ToList();
-                tasks.Add(ProcessOpenApiFilesAsync(openApiFiles, request, result, cancellationToken));
-            }
-
-            if (htmlFiles.Count > 0)
-            {
-                tasks.Add(ProcessHtmlFilesAsync(htmlFiles, request, result, cancellationToken));
-            }
-
-            await Task.WhenAll(tasks);
+            var result = CreateBlobResult(request, supportedBlobs.Count);
+            await ProcessBlobGroupsAsync(supportedBlobs, request, result, cancellationToken);
 
             stopwatch.Stop();
-            activity?.SetTag("ingestion.blob.filesProcessed", result.FilesProcessed);
-            activity?.SetTag("ingestion.blob.totalChunks", result.TotalChunksIndexed);
-            activity?.SetTag("ingestion.blob.durationMs", stopwatch.Elapsed.TotalMilliseconds);
-
-            result.Message = $"Successfully processed {result.FilesProcessed} of {result.TotalFiles} files with {result.TotalChunksIndexed} total chunks.";
-
-            if (result.Errors.Count > 0)
-            {
-                result.Message += $" {result.Errors.Count} errors occurred.";
-            }
+            UpdateBlobActivityTelemetry(activity, result, stopwatch);
+            FinalizeBlobResultMessage(result);
 
             activity?.SetStatus(ActivityStatusCode.Ok);
-
             return result;
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-
             logger.LogError(ex, "Error ingesting from blob path {Path}", request.BlobPath);
             throw;
         }
     }
 
-    private async Task ProcessMarkdownFilesAsync(
-        List<Azure.Storage.Blobs.Models.BlobItem> files,
+    private Task ProcessMarkdownFilesAsync(
+        IReadOnlyCollection<Azure.Storage.Blobs.Models.BlobItem> files,
         BlobIngestionRequest request,
         BlobIngestionResult result,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Processing {Count} Markdown files", files.Count);
-
-        foreach (var file in files)
-        {
-            try
-            {
-                var content = await blobStorageService.ReadBlobContentAsync(
-                    file.Name,
-                    request.ContainerName,
-                    cancellationToken);
-
-                var markdownRequest = new MarkdownIngestionRequest
-                {
-                    DocumentId = Path.GetFileNameWithoutExtension(file.Name),
-                    Title = Path.GetFileNameWithoutExtension(file.Name),
-                    SourceUrl = $"blob://{request.ContainerName ?? options.BlobStorage.DefaultContainer}/{file.Name}",
-                    SourceType = "blob-markdown",
-                    Tags = request.Tags,
-                    Metadata = request.Metadata,
-                    Content = content
-                };
-
-                var ingestionResult = await IngestMarkdownAsync(markdownRequest, cancellationToken);
-
-                if (ingestionResult.Success)
-                {
-                    lock (result)
-                    {
-                        result.FilesProcessed++;
-                        result.TotalChunksIndexed += ingestionResult.ChunksIndexed;
-                    }
-                }
-                else
-                {
-                    lock (result.Errors)
-                    {
-                        result.Errors.Add($"Failed to ingest {file.Name}: {ingestionResult.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error processing Markdown file {FileName}", file.Name);
-                lock (result.Errors)
-                {
-                    result.Errors.Add($"Error processing {file.Name}: {ex.Message}");
-                }
-            }
-        }
+        return ProcessBlobFilesAsync(
+            files,
+            result,
+            file => ProcessMarkdownFileAsync(file, request, cancellationToken));
     }
 
-    private async Task ProcessOpenApiFilesAsync(
-        List<Azure.Storage.Blobs.Models.BlobItem> files,
+    private Task ProcessOpenApiFilesAsync(
+        IReadOnlyCollection<Azure.Storage.Blobs.Models.BlobItem> files,
         BlobIngestionRequest request,
         BlobIngestionResult result,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Processing {Count} OpenAPI files", files.Count);
-
-        foreach (var file in files)
-        {
-            try
-            {
-                var content = await blobStorageService.ReadBlobContentAsync(
-                    file.Name,
-                    request.ContainerName,
-                    cancellationToken);
-
-                // Verify it's an OpenAPI spec
-                if (!IsOpenApiSpec(content))
-                {
-                    logger.LogWarning("File {FileName} does not appear to be an OpenAPI specification, skipping", file.Name);
-                    lock (result.Errors)
-                    {
-                        result.Errors.Add($"Skipped {file.Name}: Not a valid OpenAPI specification");
-                    }
-                    continue;
-                }
-
-                // Save content to temp file for OpenAPI parser
-                var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}{Path.GetExtension(file.Name)}");
-                await File.WriteAllTextAsync(tempFile, content, cancellationToken);
-
-                try
-                {
-                    var openApiRequest = new OpenApiIngestionRequest
-                    {
-                        SpecSource = tempFile,
-                        DocumentIdPrefix = Path.GetFileNameWithoutExtension(file.Name),
-                        Tags = request.Tags,
-                        Metadata = request.Metadata
-                    };
-
-                    var ingestionResult = await IngestOpenApiAsync(openApiRequest, cancellationToken);
-
-                    if (ingestionResult.Success)
-                    {
-                        lock (result)
-                        {
-                            result.FilesProcessed++;
-                            result.TotalChunksIndexed += ingestionResult.TotalChunksIndexed;
-                        }
-                    }
-                    else
-                    {
-                        lock (result.Errors)
-                        {
-                            result.Errors.Add($"Failed to ingest {file.Name}: {ingestionResult.Message}");
-                        }
-                    }
-                }
-                finally
-                {
-                    // Clean up temp file
-                    if (File.Exists(tempFile))
-                    {
-                        File.Delete(tempFile);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error processing OpenAPI file {FileName}", file.Name);
-                lock (result.Errors)
-                {
-                    result.Errors.Add($"Error processing {file.Name}: {ex.Message}");
-                }
-            }
-        }
+        return ProcessBlobFilesAsync(
+            files,
+            result,
+            file => ProcessOpenApiFileAsync(file, request, cancellationToken));
     }
 
-    private async Task ProcessHtmlFilesAsync(
-        List<Azure.Storage.Blobs.Models.BlobItem> files,
+    private Task ProcessHtmlFilesAsync(
+        IReadOnlyCollection<Azure.Storage.Blobs.Models.BlobItem> files,
         BlobIngestionRequest request,
         BlobIngestionResult result,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Processing {Count} HTML files", files.Count);
+        return ProcessBlobFilesAsync(
+            files,
+            result,
+            file => ProcessHtmlFileAsync(file, request, cancellationToken));
+    }
 
+    private void ValidateWebPageRequest(WebPageIngestionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Url))
+        {
+            throw new ArgumentException("Request URL must not be empty.", nameof(request));
+        }
+    }
+
+    private async Task<DocumentIngestionResult> HandleScrapedWebPageAsync(
+        WebPageIngestionRequest request,
+        ScrapedPage scrapedPage,
+        Activity? activity,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        activity?.SetTag("ingestion.scrape.statusCode", scrapedPage.StatusCode);
+
+        var scrapeTags = CreateWebPageTags(scrapedPage.Url ?? request.Url, scrapedPage.IsSuccess ? "success" : "failed");
+
+        if (!HasScrapedContent(scrapedPage))
+        {
+            return HandleFailedWebPageScrape(request, scrapeTags, activity, stopwatch, scrapedPage.StatusCode);
+        }
+
+        IngestionTelemetry.WebPagesScraped.Add(1, scrapeTags);
+
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            scrapedPage.Title = request.Title!;
+        }
+
+        var markdownContent = markdownConverter.ConvertToMarkdown(scrapedPage);
+        activity?.SetTag("ingestion.scrape.contentLength", markdownContent.Length);
+
+        var markdownRequest = BuildMarkdownRequestFromWebPage(request, scrapedPage, markdownContent);
+
+        stopwatch.Stop();
+        activity?.SetTag("ingestion.scrape.durationMs", stopwatch.Elapsed.TotalMilliseconds);
+
+        var ingestionResult = await IngestMarkdownAsync(markdownRequest, cancellationToken);
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        return ingestionResult;
+    }
+
+    private static bool HasScrapedContent(ScrapedPage scrapedPage) =>
+        scrapedPage.IsSuccess && !string.IsNullOrWhiteSpace(scrapedPage.HtmlContent);
+
+    private DocumentIngestionResult HandleFailedWebPageScrape(
+        WebPageIngestionRequest request,
+        TagList scrapeTags,
+        Activity? activity,
+        Stopwatch stopwatch,
+        int statusCode)
+    {
+        stopwatch.Stop();
+        activity?.SetStatus(ActivityStatusCode.Error, "ScrapeFailed");
+        IngestionTelemetry.WebPagesScraped.Add(1, scrapeTags);
+        logger.LogWarning("Failed to scrape content from {Url}. Status code: {StatusCode}", request.Url, statusCode);
+        return BuildFailedWebPageResult(request);
+    }
+
+    private void HandleWebPageIngestionException(
+        Exception exception,
+        WebPageIngestionRequest request,
+        Activity? activity,
+        Stopwatch stopwatch)
+    {
+        stopwatch.Stop();
+        activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+        IngestionTelemetry.WebPagesScraped.Add(1, CreateWebPageTags(request.Url, "failed"));
+        logger.LogError(exception, "Error ingesting web page {Url}", request.Url);
+    }
+
+    private static void ValidateHtmlRequest(HtmlIngestionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Content))
+        {
+            throw new ArgumentException("Request content must not be empty.", nameof(request));
+        }
+    }
+
+    private static ScrapedPage CreateScrapedPageFromHtml(HtmlIngestionRequest request)
+    {
+        return new ScrapedPage
+        {
+            Url = request.SourceUrl ?? "manual",
+            Title = request.Title ?? "Untitled HTML Document",
+            HtmlContent = request.Content,
+            StatusCode = 200,
+            ScrapedAt = DateTime.UtcNow,
+            Metadata = new Dictionary<string, string>()
+        };
+    }
+
+    private MarkdownIngestionRequest BuildMarkdownRequestFromHtml(
+        HtmlIngestionRequest request,
+        ScrapedPage scrapedPage)
+    {
+        var markdownContent = markdownConverter.ConvertToMarkdown(scrapedPage);
+        return new MarkdownIngestionRequest
+        {
+            DocumentId = request.DocumentId,
+            Title = request.Title ?? scrapedPage.Title,
+            SourceUrl = request.SourceUrl,
+            SourceType = "html",
+            Tags = request.Tags,
+            Metadata = request.Metadata,
+            Content = markdownContent
+        };
+    }
+
+    private void HandleHtmlIngestionException(Exception exception, Activity? activity)
+    {
+        activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+        logger.LogError(exception, "Error ingesting HTML content");
+    }
+
+    private static void ValidateBlobIngestionRequest(BlobIngestionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.BlobPath))
+        {
+            throw new ArgumentException("Request BlobPath must not be empty.", nameof(request));
+        }
+    }
+
+    private async Task<List<Azure.Storage.Blobs.Models.BlobItem>> GetSupportedBlobsAsync(
+        BlobIngestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var blobs = await blobStorageService.GetBlobsAsync(
+            request.BlobPath,
+            request.ContainerName,
+            cancellationToken);
+
+        return blobStorageService.FilterBySupportedExtensions(
+            blobs,
+            ".md", ".markdown", ".yml", ".yaml", ".json", ".html", ".htm");
+    }
+
+    private static BlobIngestionResult BuildEmptyBlobIngestionResult(BlobIngestionRequest request)
+    {
+        return new BlobIngestionResult
+        {
+            Success = false,
+            BlobPath = request.BlobPath,
+            TotalFiles = 0,
+            FilesProcessed = 0,
+            TotalChunksIndexed = 0,
+            Message = "No supported files found (.md, .yaml, .json, .html)"
+        };
+    }
+
+    private static BlobIngestionResult CreateBlobResult(BlobIngestionRequest request, int totalFiles)
+    {
+        return new BlobIngestionResult
+        {
+            Success = true,
+            BlobPath = request.BlobPath,
+            TotalFiles = totalFiles,
+            FilesProcessed = 0,
+            TotalChunksIndexed = 0
+        };
+    }
+
+    private async Task ProcessBlobGroupsAsync(
+        IReadOnlyList<Azure.Storage.Blobs.Models.BlobItem> blobs,
+        BlobIngestionRequest request,
+        BlobIngestionResult result,
+        CancellationToken cancellationToken)
+    {
+        var tasks = new List<Task>();
+
+        AddBlobProcessingTask(
+            tasks,
+            FilterByExtensions(blobs, ".md", ".markdown"),
+            files => ProcessMarkdownFilesAsync(files, request, result, cancellationToken));
+
+        AddBlobProcessingTask(
+            tasks,
+            FilterByExtensions(blobs, ".yml", ".yaml", ".json"),
+            files => ProcessOpenApiFilesAsync(files, request, result, cancellationToken));
+
+        AddBlobProcessingTask(
+            tasks,
+            FilterByExtensions(blobs, ".html", ".htm"),
+            files => ProcessHtmlFilesAsync(files, request, result, cancellationToken));
+
+        if (tasks.Count == 0)
+        {
+            return;
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    private static void AddBlobProcessingTask(
+        ICollection<Task> tasks,
+        IReadOnlyCollection<Azure.Storage.Blobs.Models.BlobItem> files,
+        Func<IReadOnlyCollection<Azure.Storage.Blobs.Models.BlobItem>, Task> processor)
+    {
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        tasks.Add(processor(files));
+    }
+
+    private static IReadOnlyCollection<Azure.Storage.Blobs.Models.BlobItem> FilterByExtensions(
+        IEnumerable<Azure.Storage.Blobs.Models.BlobItem> blobs,
+        params string[] extensions)
+    {
+        var allowed = new HashSet<string>(extensions, StringComparer.OrdinalIgnoreCase);
+        return blobs
+            .Where(b => allowed.Contains(Path.GetExtension(b.Name) ?? string.Empty))
+            .ToList();
+    }
+
+    private static void UpdateBlobActivityTelemetry(Activity? activity, BlobIngestionResult result, Stopwatch stopwatch)
+    {
+        activity?.SetTag("ingestion.blob.filesProcessed", result.FilesProcessed);
+        activity?.SetTag("ingestion.blob.totalChunks", result.TotalChunksIndexed);
+        activity?.SetTag("ingestion.blob.durationMs", stopwatch.Elapsed.TotalMilliseconds);
+    }
+
+    private static void FinalizeBlobResultMessage(BlobIngestionResult result)
+    {
+        result.Message = $"Successfully processed {result.FilesProcessed} of {result.TotalFiles} files with {result.TotalChunksIndexed} total chunks.";
+        if (result.Errors.Count > 0)
+        {
+            result.Message += $" {result.Errors.Count} errors occurred.";
+        }
+    }
+
+    private static async Task ProcessBlobFilesAsync(
+        IEnumerable<Azure.Storage.Blobs.Models.BlobItem> files,
+        BlobIngestionResult result,
+        Func<Azure.Storage.Blobs.Models.BlobItem, Task<FileIngestionOutcome>> processFileAsync)
+    {
         foreach (var file in files)
         {
+            var outcome = await processFileAsync(file);
+            if (outcome.Success)
+            {
+                lock (result)
+                {
+                    result.FilesProcessed++;
+                    result.TotalChunksIndexed += outcome.ChunksIndexed;
+                }
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(outcome.Error))
+            {
+                continue;
+            }
+
+            lock (result.Errors)
+            {
+                result.Errors.Add(outcome.Error);
+            }
+        }
+    }
+
+    private async Task<FileIngestionOutcome> ProcessMarkdownFileAsync(
+        Azure.Storage.Blobs.Models.BlobItem file,
+        BlobIngestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var content = await blobStorageService.ReadBlobContentAsync(
+                file.Name,
+                request.ContainerName,
+                cancellationToken);
+
+            var markdownRequest = new MarkdownIngestionRequest
+            {
+                DocumentId = Path.GetFileNameWithoutExtension(file.Name),
+                Title = Path.GetFileNameWithoutExtension(file.Name),
+                SourceUrl = CreateBlobSourceUrl(request, file.Name),
+                SourceType = "blob-markdown",
+                Tags = request.Tags,
+                Metadata = request.Metadata,
+                Content = content
+            };
+
+            var ingestionResult = await IngestMarkdownAsync(markdownRequest, cancellationToken);
+            return ingestionResult.Success
+                ? FileIngestionOutcome.FromSuccess(ingestionResult.ChunksIndexed)
+                : FileIngestionOutcome.FromFailure($"Failed to ingest {file.Name}: {ingestionResult.Message}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing Markdown file {FileName}", file.Name);
+            return FileIngestionOutcome.FromFailure($"Error processing {file.Name}: {ex.Message}");
+        }
+    }
+
+    private async Task<FileIngestionOutcome> ProcessOpenApiFileAsync(
+        Azure.Storage.Blobs.Models.BlobItem file,
+        BlobIngestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var content = await blobStorageService.ReadBlobContentAsync(
+                file.Name,
+                request.ContainerName,
+                cancellationToken);
+
+            if (!IsOpenApiSpec(content))
+            {
+                var message = $"Skipped {file.Name}: Not a valid OpenAPI specification";
+                logger.LogWarning("File {FileName} does not appear to be an OpenAPI specification, skipping", file.Name);
+                return FileIngestionOutcome.FromFailure(message);
+            }
+
+            var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}{Path.GetExtension(file.Name)}");
+            await File.WriteAllTextAsync(tempFile, content, cancellationToken);
+
             try
             {
-                var content = await blobStorageService.ReadBlobContentAsync(
-                    file.Name,
-                    request.ContainerName,
-                    cancellationToken);
-
-                var htmlRequest = new HtmlIngestionRequest
+                var openApiRequest = new OpenApiIngestionRequest
                 {
-                    DocumentId = Path.GetFileNameWithoutExtension(file.Name),
-                    Title = Path.GetFileNameWithoutExtension(file.Name),
-                    SourceUrl = $"blob://{request.ContainerName ?? options.BlobStorage.DefaultContainer}/{file.Name}",
+                    SpecSource = tempFile,
+                    DocumentIdPrefix = Path.GetFileNameWithoutExtension(file.Name),
                     Tags = request.Tags,
-                    Metadata = request.Metadata,
-                    Content = content
+                    Metadata = request.Metadata
                 };
 
-                var ingestionResult = await IngestHtmlAsync(htmlRequest, cancellationToken);
-
-                if (ingestionResult.Success)
-                {
-                    lock (result)
-                    {
-                        result.FilesProcessed++;
-                        result.TotalChunksIndexed += ingestionResult.ChunksIndexed;
-                    }
-                }
-                else
-                {
-                    lock (result.Errors)
-                    {
-                        result.Errors.Add($"Failed to ingest {file.Name}: {ingestionResult.Message}");
-                    }
-                }
+                var ingestionResult = await IngestOpenApiAsync(openApiRequest, cancellationToken);
+                return ingestionResult.Success
+                    ? FileIngestionOutcome.FromSuccess(ingestionResult.TotalChunksIndexed)
+                    : FileIngestionOutcome.FromFailure($"Failed to ingest {file.Name}: {ingestionResult.Message}");
             }
-            catch (Exception ex)
+            finally
             {
-                logger.LogError(ex, "Error processing HTML file {FileName}", file.Name);
-                lock (result.Errors)
+                if (File.Exists(tempFile))
                 {
-                    result.Errors.Add($"Error processing {file.Name}: {ex.Message}");
+                    File.Delete(tempFile);
                 }
             }
         }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing OpenAPI file {FileName}", file.Name);
+            return FileIngestionOutcome.FromFailure($"Error processing {file.Name}: {ex.Message}");
+        }
+    }
+
+    private async Task<FileIngestionOutcome> ProcessHtmlFileAsync(
+        Azure.Storage.Blobs.Models.BlobItem file,
+        BlobIngestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var content = await blobStorageService.ReadBlobContentAsync(
+                file.Name,
+                request.ContainerName,
+                cancellationToken);
+
+            var htmlRequest = new HtmlIngestionRequest
+            {
+                DocumentId = Path.GetFileNameWithoutExtension(file.Name),
+                Title = Path.GetFileNameWithoutExtension(file.Name),
+                SourceUrl = CreateBlobSourceUrl(request, file.Name),
+                Tags = request.Tags,
+                Metadata = request.Metadata,
+                Content = content
+            };
+
+            var ingestionResult = await IngestHtmlAsync(htmlRequest, cancellationToken);
+            return ingestionResult.Success
+                ? FileIngestionOutcome.FromSuccess(ingestionResult.ChunksIndexed)
+                : FileIngestionOutcome.FromFailure($"Failed to ingest {file.Name}: {ingestionResult.Message}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing HTML file {FileName}", file.Name);
+            return FileIngestionOutcome.FromFailure($"Error processing {file.Name}: {ex.Message}");
+        }
+    }
+
+    private string CreateBlobSourceUrl(BlobIngestionRequest request, string blobName)
+    {
+        var container = request.ContainerName ?? options.BlobStorage.DefaultContainer;
+        return $"blob://{container ?? string.Empty}/{blobName}";
+    }
+
+    private readonly record struct FileIngestionOutcome(bool Success, int ChunksIndexed, string? Error)
+    {
+        public static FileIngestionOutcome FromSuccess(int chunks) => new(true, chunks, null);
+        public static FileIngestionOutcome FromFailure(string error) => new(false, 0, error);
     }
 
     private static bool IsOpenApiSpec(string content)
@@ -527,11 +634,7 @@ public class DocumentIngestionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        if (string.IsNullOrWhiteSpace(request.SpecSource))
-        {
-            throw new ArgumentException("Request SpecSource must not be empty.", nameof(request));
-        }
+        ValidateOpenApiRequest(request);
 
         using var activity = IngestionTelemetry.ActivitySource.StartActivity("IngestOpenApi");
         activity?.SetTag("ingestion.sourceType", "openapi");
@@ -543,145 +646,243 @@ public class DocumentIngestionService(
 
         try
         {
-            // Parse OpenAPI specification
-            var endpoints = await openApiIngestionTool.ParseOpenApiSpecAsync(request.SpecSource, cancellationToken);
-            activity?.SetTag("ingestion.openapi.totalEndpoints", endpoints.Count);
-
+            var endpoints = await ParseOpenApiEndpointsAsync(request, activity, cancellationToken);
             if (endpoints.Count == 0)
             {
-                activity?.SetStatus(ActivityStatusCode.Error, "NoEndpoints");
-                IngestionTelemetry.IngestionFailures.Add(1, CreateOpenApiTags(request, "no-endpoints"));
-
-                logger.LogWarning("No endpoints found in OpenAPI spec: {Source}", request.SpecSource);
-                return new OpenApiIngestionResult
-                {
-                    Success = false,
-                    SpecSource = request.SpecSource,
-                    EndpointsProcessed = 0,
-                    TotalChunksIndexed = 0,
-                    Message = "No endpoints found in the OpenAPI specification."
-                };
+                stopwatch.Stop();
+                return BuildEmptyOpenApiResult(request, activity);
             }
 
-            IngestionTelemetry.OpenApiEndpointsProcessed.Add(endpoints.Count, CreateOpenApiTags(request, "parsed"));
-
-            logger.LogInformation("Found {Count} endpoints in OpenAPI spec", endpoints.Count);
-
-            // Convert endpoints to Markdown
             var markdownDocs = openApiIngestionTool.ConvertEndpointsToMarkdown(endpoints);
-
-            var successfulIngestions = 0;
-            var totalChunks = 0;
-            var errors = new List<string>();
-
-            // Ingest each endpoint as a separate document
-        for (var i = 0; i < endpoints.Count && i < markdownDocs.Count; i++)
-        {
-            var endpoint = endpoints[i];
-            var markdown = markdownDocs[i];
-            Activity? endpointActivity = null;
-
-            try
-            {
-                endpointActivity = IngestionTelemetry.ActivitySource.StartActivity("IngestOpenApiEndpoint");
-                endpointActivity?.SetTag("ingestion.openapi.method", endpoint.Method);
-                endpointActivity?.SetTag("ingestion.openapi.path", endpoint.Path);
-
-                var documentId = string.IsNullOrWhiteSpace(request.DocumentIdPrefix)
-                    ? endpoint.Id
-                    : $"{request.DocumentIdPrefix}_{endpoint.Id}";
-
-                var markdownRequest = new MarkdownIngestionRequest
-                {
-                    DocumentId = documentId,
-                    Title = $"{endpoint.Method} {endpoint.Path}",
-                    SourceUrl = request.SpecSource,
-                    SourceType = "openapi",
-                    Tags = request.Tags,
-                    Metadata = request.Metadata,
-                    Content = markdown
-                };
-
-                var result = await IngestMarkdownAsync(markdownRequest, cancellationToken);
-
-                if (result.Success)
-                {
-                    successfulIngestions++;
-                    totalChunks += result.ChunksIndexed;
-                    endpointActivity?.SetStatus(ActivityStatusCode.Ok);
-                }
-                else
-                {
-                    endpointActivity?.SetStatus(ActivityStatusCode.Error, result.Message);
-                    errors.Add($"Failed to ingest {endpoint.Method} {endpoint.Path}: {result.Message}");
-                }
-            }
-            catch (Exception ex)
-            {
-                endpointActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-                logger.LogError(ex, "Error ingesting endpoint {Method} {Path}", endpoint.Method, endpoint.Path);
-                errors.Add($"Error ingesting {endpoint.Method} {endpoint.Path}: {ex.Message}");
-                activity?.AddEvent(new ActivityEvent("EndpointIngestionFailed", tags: new ActivityTagsCollection
-                {
-                    { "method", endpoint.Method },
-                    { "path", endpoint.Path },
-                    { "error", ex.Message }
-                }));
-            }
-            finally
-            {
-                endpointActivity?.Dispose();
-            }
-        }
+            var summary = await IngestOpenApiEndpointsAsync(request, endpoints, markdownDocs, activity, cancellationToken);
 
             stopwatch.Stop();
-            activity?.SetTag("ingestion.openapi.processed", successfulIngestions);
-            activity?.SetTag("ingestion.openapi.totalChunks", totalChunks);
-            activity?.SetTag("ingestion.openapi.durationMs", stopwatch.Elapsed.TotalMilliseconds);
+            UpdateOpenApiTelemetry(activity, summary, stopwatch);
 
-            var success = successfulIngestions > 0;
-            var message = success
-                ? $"Successfully ingested {successfulIngestions} of {endpoints.Count} endpoints with {totalChunks} total chunks."
-                : "Failed to ingest any endpoints.";
-
-            if (errors.Any())
-            {
-                message += $" Errors: {string.Join("; ", errors)}";
-            }
-
-            var resultTags = CreateOpenApiTags(request, success ? "success" : "failed");
-            if (success)
-            {
-                IngestionTelemetry.OpenApiEndpointsProcessed.Add(successfulIngestions, CreateOpenApiTags(request, "indexed"));
-                activity?.SetStatus(ActivityStatusCode.Ok);
-            }
-            else
-            {
-                IngestionTelemetry.IngestionFailures.Add(1, resultTags);
-                activity?.SetStatus(ActivityStatusCode.Error, "NoEndpointsIndexed");
-            }
-
-            return new OpenApiIngestionResult
-            {
-                Success = success,
-                SpecSource = request.SpecSource,
-                EndpointsProcessed = successfulIngestions,
-                TotalEndpoints = endpoints.Count,
-                TotalChunksIndexed = totalChunks,
-                Message = message,
-                Errors = errors
-            };
+            return BuildOpenApiResult(request, endpoints.Count, summary, activity);
         }
         catch (Exception ex)
         {
-            stopwatch.Stop();
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            IngestionTelemetry.IngestionFailures.Add(1, CreateOpenApiTags(request, "failed"));
-
-            logger.LogError(ex, "Error ingesting OpenAPI spec {Source}", request.SpecSource);
+            HandleOpenApiIngestionException(ex, request, activity, stopwatch);
             throw;
         }
     }
+
+    private static void ValidateOpenApiRequest(OpenApiIngestionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.SpecSource))
+        {
+            throw new ArgumentException("Request SpecSource must not be empty.", nameof(request));
+        }
+    }
+
+    private async Task<List<OpenApiEndpoint>> ParseOpenApiEndpointsAsync(
+        OpenApiIngestionRequest request,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var endpoints = await openApiIngestionTool.ParseOpenApiSpecAsync(request.SpecSource!, cancellationToken);
+        activity?.SetTag("ingestion.openapi.totalEndpoints", endpoints.Count);
+
+        if (endpoints.Count > 0)
+        {
+            IngestionTelemetry.OpenApiEndpointsProcessed.Add(endpoints.Count, CreateOpenApiTags(request, "parsed"));
+            logger.LogInformation("Found {Count} endpoints in OpenAPI spec", endpoints.Count);
+            return endpoints;
+        }
+
+        activity?.SetStatus(ActivityStatusCode.Error, "NoEndpoints");
+        IngestionTelemetry.IngestionFailures.Add(1, CreateOpenApiTags(request, "no-endpoints"));
+        logger.LogWarning("No endpoints found in OpenAPI spec: {Source}", request.SpecSource);
+        return endpoints;
+    }
+
+    private static OpenApiIngestionResult BuildEmptyOpenApiResult(
+        OpenApiIngestionRequest request,
+        Activity? activity)
+    {
+        activity?.SetStatus(ActivityStatusCode.Error, "NoEndpoints");
+
+        return new OpenApiIngestionResult
+        {
+            Success = false,
+            SpecSource = request.SpecSource!,
+            EndpointsProcessed = 0,
+            TotalEndpoints = 0,
+            TotalChunksIndexed = 0,
+            Message = "No endpoints found in the OpenAPI specification."
+        };
+    }
+
+    private async Task<EndpointIngestionSummary> IngestOpenApiEndpointsAsync(
+        OpenApiIngestionRequest request,
+        IReadOnlyList<OpenApiEndpoint> endpoints,
+        IReadOnlyList<string> markdownDocs,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var successful = 0;
+        var totalChunks = 0;
+        var errors = new List<string>();
+
+        var count = Math.Min(endpoints.Count, markdownDocs.Count);
+        for (var i = 0; i < count; i++)
+        {
+            var outcome = await IngestSingleEndpointAsync(
+                request,
+                endpoints[i],
+                markdownDocs[i],
+                activity,
+                cancellationToken);
+
+            if (outcome.Success)
+            {
+                successful++;
+                totalChunks += outcome.Chunks;
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(outcome.Error))
+            {
+                errors.Add(outcome.Error);
+            }
+        }
+
+        return new EndpointIngestionSummary(successful, totalChunks, errors);
+    }
+
+    private async Task<EndpointIngestionOutcome> IngestSingleEndpointAsync(
+        OpenApiIngestionRequest request,
+        OpenApiEndpoint endpoint,
+        string markdown,
+        Activity? parentActivity,
+        CancellationToken cancellationToken)
+    {
+        using var endpointActivity = IngestionTelemetry.ActivitySource.StartActivity("IngestOpenApiEndpoint");
+        endpointActivity?.SetTag("ingestion.openapi.method", endpoint.Method);
+        endpointActivity?.SetTag("ingestion.openapi.path", endpoint.Path);
+
+        try
+        {
+            var markdownRequest = BuildMarkdownRequestFromEndpoint(request, endpoint, markdown);
+            var result = await IngestMarkdownAsync(markdownRequest, cancellationToken);
+
+            if (result.Success)
+            {
+                endpointActivity?.SetStatus(ActivityStatusCode.Ok);
+                return EndpointIngestionOutcome.FromSuccess(result.ChunksIndexed);
+            }
+
+            endpointActivity?.SetStatus(ActivityStatusCode.Error, result.Message);
+            return EndpointIngestionOutcome.FromFailure($"Failed to ingest {endpoint.Method} {endpoint.Path}: {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            endpointActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            logger.LogError(ex, "Error ingesting endpoint {Method} {Path}", endpoint.Method, endpoint.Path);
+            parentActivity?.AddEvent(new ActivityEvent("EndpointIngestionFailed", tags: new ActivityTagsCollection
+            {
+                { "method", endpoint.Method },
+                { "path", endpoint.Path },
+                { "error", ex.Message }
+            }));
+
+            return EndpointIngestionOutcome.FromFailure($"Error ingesting {endpoint.Method} {endpoint.Path}: {ex.Message}");
+        }
+    }
+
+    private static MarkdownIngestionRequest BuildMarkdownRequestFromEndpoint(
+        OpenApiIngestionRequest request,
+        OpenApiEndpoint endpoint,
+        string markdown)
+    {
+        var documentId = string.IsNullOrWhiteSpace(request.DocumentIdPrefix)
+            ? endpoint.Id
+            : $"{request.DocumentIdPrefix}_{endpoint.Id}";
+
+        return new MarkdownIngestionRequest
+        {
+            DocumentId = documentId,
+            Title = $"{endpoint.Method} {endpoint.Path}",
+            SourceUrl = request.SpecSource,
+            SourceType = "openapi",
+            Tags = request.Tags,
+            Metadata = request.Metadata,
+            Content = markdown
+        };
+    }
+
+    private static void UpdateOpenApiTelemetry(
+        Activity? activity,
+        EndpointIngestionSummary summary,
+        Stopwatch stopwatch)
+    {
+        activity?.SetTag("ingestion.openapi.processed", summary.SuccessfulCount);
+        activity?.SetTag("ingestion.openapi.totalChunks", summary.TotalChunks);
+        activity?.SetTag("ingestion.openapi.durationMs", stopwatch.Elapsed.TotalMilliseconds);
+    }
+
+    private OpenApiIngestionResult BuildOpenApiResult(
+        OpenApiIngestionRequest request,
+        int totalEndpoints,
+        EndpointIngestionSummary summary,
+        Activity? activity)
+    {
+        var success = summary.SuccessfulCount > 0;
+        var message = success
+            ? $"Successfully ingested {summary.SuccessfulCount} of {totalEndpoints} endpoints with {summary.TotalChunks} total chunks."
+            : "Failed to ingest any endpoints.";
+
+        if (summary.Errors.Count > 0)
+        {
+            message += $" Errors: {string.Join("; ", summary.Errors)}";
+        }
+
+        var statusTag = success ? "success" : "failed";
+        var resultTags = CreateOpenApiTags(request, statusTag);
+
+        if (success)
+        {
+            IngestionTelemetry.OpenApiEndpointsProcessed.Add(summary.SuccessfulCount, CreateOpenApiTags(request, "indexed"));
+            activity?.SetStatus(ActivityStatusCode.Ok);
+        }
+        else
+        {
+            IngestionTelemetry.IngestionFailures.Add(1, resultTags);
+            activity?.SetStatus(ActivityStatusCode.Error, "NoEndpointsIndexed");
+        }
+
+        return new OpenApiIngestionResult
+        {
+            Success = success,
+            SpecSource = request.SpecSource!,
+            EndpointsProcessed = summary.SuccessfulCount,
+            TotalEndpoints = totalEndpoints,
+            TotalChunksIndexed = summary.TotalChunks,
+            Message = message,
+            Errors = summary.Errors
+        };
+    }
+
+    private void HandleOpenApiIngestionException(
+        Exception exception,
+        OpenApiIngestionRequest request,
+        Activity? activity,
+        Stopwatch stopwatch)
+    {
+        stopwatch.Stop();
+        activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+        IngestionTelemetry.IngestionFailures.Add(1, CreateOpenApiTags(request, "failed"));
+        logger.LogError(exception, "Error ingesting OpenAPI spec {Source}", request.SpecSource);
+    }
+
+    private readonly record struct EndpointIngestionOutcome(bool Success, int Chunks, string? Error)
+    {
+        public static EndpointIngestionOutcome FromSuccess(int chunks) => new(true, chunks, null);
+        public static EndpointIngestionOutcome FromFailure(string? error) => new(false, 0, error);
+    }
+
+    private sealed record EndpointIngestionSummary(int SuccessfulCount, int TotalChunks, List<string> Errors);
 
     public async Task<DocumentIngestionResult> IngestMarkdownAsync(
         MarkdownIngestionRequest request,
@@ -851,35 +1052,60 @@ public class DocumentIngestionService(
 
     private static void MergeFrontmatter(DocumentMetadata metadata, Dictionary<string, object> frontmatter)
     {
-        if (frontmatter.TryGetValue("title", out var title) && title is string titleValue && !string.IsNullOrWhiteSpace(titleValue))
-        {
-            metadata.Title = titleValue;
-        }
+        ApplyString(frontmatter, "title", value => metadata.Title = value, skipEmpty: true);
+        ApplyString(frontmatter, "description", value => metadata.Description = value);
+        ApplyString(frontmatter, "url", value => metadata.SourceUrl = value);
+        ApplyString(frontmatter, "sourceType", value => metadata.SourceType = value);
 
-        if (frontmatter.TryGetValue("description", out var description) && description is string descValue)
+        if (frontmatter.TryGetValue("tags", out var tagsValue))
         {
-            metadata.Description = descValue;
-        }
-
-        if (frontmatter.TryGetValue("url", out var url) && url is string urlValue)
-        {
-            metadata.SourceUrl = urlValue;
-        }
-
-        if (frontmatter.TryGetValue("sourceType", out var sourceType) && sourceType is string sourceTypeValue)
-        {
-            metadata.SourceType = sourceTypeValue;
-        }
-
-        if (frontmatter.TryGetValue("tags", out var tagsValue) && tagsValue is IEnumerable<object> tags)
-        {
-            metadata.Tags = tags.Select(t => t?.ToString() ?? string.Empty).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+            var tags = ExtractStringList(tagsValue);
+            if (tags.Count > 0)
+            {
+                metadata.Tags = tags;
+            }
         }
 
         foreach (var kvp in frontmatter)
         {
             metadata.CustomMetadata[kvp.Key] = kvp.Value;
         }
+    }
+
+    private static void ApplyString(
+        IReadOnlyDictionary<string, object> source,
+        string key,
+        Action<string> apply,
+        bool skipEmpty = false)
+    {
+        if (!source.TryGetValue(key, out var value) || value is not string stringValue)
+        {
+            return;
+        }
+
+        if (skipEmpty && string.IsNullOrWhiteSpace(stringValue))
+        {
+            return;
+        }
+
+        apply(stringValue);
+    }
+
+    private static List<string> ExtractStringList(object value)
+    {
+        return value switch
+        {
+            IEnumerable<string> stringEnumerable => stringEnumerable
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList(),
+            IEnumerable<object> objectEnumerable => objectEnumerable
+                .Select(item => item?.ToString())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!)
+                .ToList(),
+            string single when !string.IsNullOrWhiteSpace(single) => new List<string> { single },
+            _ => []
+        };
     }
 
     private static string StripFrontmatter(string markdown)

@@ -5,6 +5,10 @@ using Microsoft.OpenApi.Readers;
 using Microsoft.OpenApi.Writers;
 using SemanticHub.IngestionService.Models;
 using System.Text;
+using System.IO;
+using System.Net.Http;
+using System.Collections.Generic;
+using System.Linq;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using SemanticHub.IngestionService.Diagnostics;
@@ -32,39 +36,16 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
 
         logger.LogInformation("Parsing OpenAPI spec from: {Source}", specSource);
 
-        OpenApiDocument openApiDoc;
-
         try
         {
-            // Determine if source is URL or file path
-            if (Uri.TryCreate(specSource, UriKind.Absolute, out var uri) &&
-                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-            {
-                // Load from URL
-                using var httpClient = new HttpClient();
-                var stream = await httpClient.GetStreamAsync(uri, cancellationToken);
-                var reader = new OpenApiStreamReader();
-                openApiDoc = reader.Read(stream, out var diagnostic);
+            var openApiDoc = await LoadOpenApiDocumentAsync(specSource, cancellationToken);
+            var endpoints = ExtractEndpoints(openApiDoc, specSource);
 
-                if (diagnostic.Errors.Count > 0)
-                {
-                    logger.LogWarning("OpenAPI parsing errors: {Errors}",
-                        string.Join(", ", diagnostic.Errors.Select(e => e.Message)));
-                }
-            }
-            else
-            {
-                // Load from file
-                await using var stream = File.OpenRead(specSource);
-                var reader = new OpenApiStreamReader();
-                openApiDoc = reader.Read(stream, out var diagnostic);
+            activity?.SetTag("ingestion.openapi.endpointCount", endpoints.Count);
+            activity?.SetStatus(ActivityStatusCode.Ok);
 
-                if (diagnostic.Errors.Count > 0)
-                {
-                    logger.LogWarning("OpenAPI parsing errors: {Errors}",
-                        string.Join(", ", diagnostic.Errors.Select(e => e.Message)));
-                }
-            }
+            logger.LogInformation("Successfully parsed {Count} endpoints from OpenAPI spec", endpoints.Count);
+            return endpoints;
         }
         catch (Exception ex)
         {
@@ -72,15 +53,54 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
             logger.LogError(ex, "Failed to parse OpenAPI spec from: {Source}", specSource);
             throw;
         }
+    }
 
-        // Extract endpoints
-        var endpoints = ExtractEndpoints(openApiDoc, specSource);
+    private async Task<OpenApiDocument> LoadOpenApiDocumentAsync(
+        string specSource,
+        CancellationToken cancellationToken)
+    {
+        if (TryCreateHttpUri(specSource, out var uri) && uri != null)
+        {
+            using var httpClient = new HttpClient();
+            await using var stream = await httpClient.GetStreamAsync(uri, cancellationToken);
+            return ReadOpenApiDocument(stream);
+        }
 
-        activity?.SetTag("ingestion.openapi.endpointCount", endpoints.Count);
-        activity?.SetStatus(ActivityStatusCode.Ok);
+        await using var fileStream = File.OpenRead(specSource);
+        return ReadOpenApiDocument(fileStream);
+    }
 
-        logger.LogInformation("Successfully parsed {Count} endpoints from OpenAPI spec", endpoints.Count);
-        return endpoints;
+    private static bool TryCreateHttpUri(string specSource, out Uri? uri)
+    {
+        if (Uri.TryCreate(specSource, UriKind.Absolute, out var created) &&
+            (created.Scheme == Uri.UriSchemeHttp || created.Scheme == Uri.UriSchemeHttps))
+        {
+            uri = created;
+            return true;
+        }
+
+        uri = null;
+        return false;
+    }
+
+    private OpenApiDocument ReadOpenApiDocument(Stream stream)
+    {
+        var reader = new OpenApiStreamReader();
+        var document = reader.Read(stream, out var diagnostic);
+        LogParsingDiagnostics(diagnostic);
+        return document;
+    }
+
+    private void LogParsingDiagnostics(OpenApiDiagnostic diagnostic)
+    {
+        if (diagnostic.Errors.Count == 0)
+        {
+            return;
+        }
+
+        logger.LogWarning(
+            "OpenAPI parsing issues: {Errors}",
+            string.Join(", ", diagnostic.Errors.Select(e => e.Message)));
     }
 
     /// <summary>
@@ -88,75 +108,114 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
     /// </summary>
     private static List<OpenApiEndpoint> ExtractEndpoints(OpenApiDocument doc, string source)
     {
-        var endpoints = new List<OpenApiEndpoint>();
         var version = doc.Info?.Version ?? "1.0";
         var servers = doc.Servers?.Select(s => s.Url).ToList() ?? [];
 
+        var endpoints = new List<OpenApiEndpoint>();
         foreach (var path in doc.Paths)
         {
-            foreach (var operation in path.Value.Operations)
-            {
-                var method = operation.Key.ToString().ToUpper();
-                var op = operation.Value;
-
-                // Merge path-level and operation-level parameters
-                var allParameters = new List<OpenApiParameter>();
-
-                // Add path-level parameters first
-                if (path.Value.Parameters != null)
-                {
-                    allParameters.AddRange(path.Value.Parameters);
-                }
-
-                // Add operation-level parameters (these override path-level if same name)
-                if (op.Parameters != null)
-                {
-                    foreach (var opParam in op.Parameters)
-                    {
-                        // Remove any path-level param with same name and location
-                        allParameters.RemoveAll(p =>
-                            p.Name == opParam.Name &&
-                            p.In == opParam.In);
-                        allParameters.Add(opParam);
-                    }
-                }
-
-                var endpoint = new OpenApiEndpoint
-                {
-                    Id = $"{method}_{path.Key}".Replace("/", "_").Replace("{", "").Replace("}", ""),
-                    Method = method,
-                    Path = path.Key,
-                    OperationId = op.OperationId,
-                    Summary = op.Summary,
-                    Description = op.Description,
-                    Tags = op.Tags?.Select(t => t.Name).ToList() ?? [],
-                    Version = version,
-                    SourceSpec = source,
-                    Servers = servers,
-                    // Use merged parameters
-                    Parameters = allParameters,
-                    RequestBody = op.RequestBody,
-                    Responses = op.Responses ?? []
-                };
-
-                // Extract security requirements
-                if (op.Security != null)
-                {
-                    foreach (var security in op.Security)
-                    {
-                        var securityNames = security.Keys
-                            .Select(k => k.Reference?.Id ?? k.ToString())
-                            .Where(s => !string.IsNullOrEmpty(s))
-                            .Cast<string>();
-                        endpoint.Security.AddRange(securityNames);
-                    }
-                }
-
-                endpoints.Add(endpoint);
-            }
+            endpoints.AddRange(CreateEndpointsForPath(source, version, servers, path.Key, path.Value));
         }
 
         return endpoints;
+    }
+
+    private static IEnumerable<OpenApiEndpoint> CreateEndpointsForPath(
+        string source,
+        string version,
+        List<string> servers,
+        string pathKey,
+        OpenApiPathItem pathItem)
+    {
+        foreach (var operation in pathItem.Operations)
+        {
+            yield return CreateEndpoint(source, version, servers, pathKey, pathItem, operation);
+        }
+    }
+
+    private static OpenApiEndpoint CreateEndpoint(
+        string source,
+        string version,
+        List<string> servers,
+        string pathKey,
+        OpenApiPathItem pathItem,
+        KeyValuePair<OperationType, OpenApiOperation> operation)
+    {
+        var method = operation.Key.ToString().ToUpperInvariant();
+        var mergedParameters = MergeParameters(pathItem.Parameters, operation.Value.Parameters);
+
+        var endpoint = new OpenApiEndpoint
+        {
+            Id = BuildEndpointId(method, pathKey),
+            Method = method,
+            Path = pathKey,
+            OperationId = operation.Value.OperationId,
+            Summary = operation.Value.Summary,
+            Description = operation.Value.Description,
+            Tags = operation.Value.Tags?.Select(t => t.Name).ToList() ?? [],
+            Version = version,
+            SourceSpec = source,
+            Servers = new List<string>(servers),
+            Parameters = mergedParameters,
+            RequestBody = operation.Value.RequestBody,
+            Responses = operation.Value.Responses ?? []
+        };
+
+        AddSecurityRequirements(operation.Value, endpoint);
+        return endpoint;
+    }
+
+    private static string BuildEndpointId(string method, string pathKey)
+    {
+        return $"{method}_{pathKey}"
+            .Replace("/", "_", StringComparison.Ordinal)
+            .Replace("{", string.Empty, StringComparison.Ordinal)
+            .Replace("}", string.Empty, StringComparison.Ordinal);
+    }
+
+    private static List<OpenApiParameter> MergeParameters(
+        IList<OpenApiParameter>? pathParameters,
+        IList<OpenApiParameter>? operationParameters)
+    {
+        var merged = new List<OpenApiParameter>();
+
+        if (pathParameters != null)
+        {
+            merged.AddRange(pathParameters);
+        }
+
+        if (operationParameters == null)
+        {
+            return merged;
+        }
+
+        foreach (var parameter in operationParameters)
+        {
+            merged.RemoveAll(p => p.Name == parameter.Name && p.In == parameter.In);
+            merged.Add(parameter);
+        }
+
+        return merged;
+    }
+
+    private static void AddSecurityRequirements(OpenApiOperation operation, OpenApiEndpoint endpoint)
+    {
+        if (operation.Security == null)
+        {
+            return;
+        }
+
+        foreach (var security in operation.Security)
+        {
+            foreach (var requirement in security.Keys)
+            {
+                var name = requirement.Reference?.Id ?? requirement.ToString();
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    endpoint.Security.Add(name);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -166,7 +225,21 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
     {
         var sb = new StringBuilder();
 
-        // Build YAML frontmatter
+        AppendFrontmatter(sb, endpoint);
+        AppendHeading(sb, endpoint);
+        AppendSummarySection(sb, endpoint);
+        AppendDescriptionSection(sb, endpoint);
+        AppendServersSection(sb, endpoint);
+        AppendParametersSection(sb, endpoint);
+        AppendRequestBodySection(sb, endpoint);
+        AppendResponsesSection(sb, endpoint);
+        AppendSecuritySection(sb, endpoint);
+
+        return sb.ToString();
+    }
+
+    private void AppendFrontmatter(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
         var frontmatter = new Dictionary<string, object>
         {
             ["title"] = $"{endpoint.Method} {endpoint.Path}",
@@ -188,156 +261,186 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
         sb.AppendLine(_yamlSerializer.Serialize(frontmatter).TrimEnd());
         sb.AppendLine("---");
         sb.AppendLine();
+    }
 
-        // Build Markdown content
+    private static void AppendHeading(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
         sb.AppendLine($"# {endpoint.Method} {endpoint.Path}");
         sb.AppendLine();
+    }
 
-        if (!string.IsNullOrWhiteSpace(endpoint.Summary))
+    private static void AppendSummarySection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint.Summary))
         {
-            sb.AppendLine($"**Summary:** {endpoint.Summary}");
+            return;
+        }
+
+        sb.AppendLine($"**Summary:** {endpoint.Summary}");
+        sb.AppendLine();
+    }
+
+    private static void AppendDescriptionSection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint.Description))
+        {
+            return;
+        }
+
+        sb.AppendLine("## Description");
+        sb.AppendLine();
+        sb.AppendLine(endpoint.Description);
+        sb.AppendLine();
+    }
+
+    private static void AppendServersSection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (!endpoint.Servers.Any())
+        {
+            return;
+        }
+
+        sb.AppendLine("## Servers");
+        sb.AppendLine();
+        foreach (var server in endpoint.Servers)
+        {
+            sb.AppendLine($"- `{server}`");
+        }
+        sb.AppendLine();
+    }
+
+    private static void AppendParametersSection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (!endpoint.Parameters.Any())
+        {
+            return;
+        }
+
+        sb.AppendLine("## Parameters");
+        sb.AppendLine();
+        sb.AppendLine("| Name | In  | Type | Required | Description |");
+        sb.AppendLine("|------|-----|------|----------|-------------|");
+
+        foreach (var parameter in endpoint.Parameters)
+        {
+            var required = parameter.Required ? "✓" : string.Empty;
+            var type = parameter.Schema?.Type ?? "string";
+            var description = parameter.Description ?? string.Empty;
+            var location = parameter.In?.ToString() ?? "unknown";
+            sb.AppendLine($"| `{parameter.Name}` | {location} | {type} | {required} | {description} |");
+        }
+
+        sb.AppendLine();
+    }
+
+    private void AppendRequestBodySection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (endpoint.RequestBody == null)
+        {
+            return;
+        }
+
+        sb.AppendLine("## Request Body");
+        sb.AppendLine();
+
+        if (endpoint.RequestBody.Required)
+        {
+            sb.AppendLine("**Required:** Yes");
             sb.AppendLine();
         }
 
-        if (!string.IsNullOrWhiteSpace(endpoint.Description))
+        if (!string.IsNullOrWhiteSpace(endpoint.RequestBody.Description))
         {
-            sb.AppendLine("## Description");
-            sb.AppendLine();
-            sb.AppendLine(endpoint.Description);
+            sb.AppendLine(endpoint.RequestBody.Description);
             sb.AppendLine();
         }
 
-        // Servers
-        if (endpoint.Servers.Any())
+        var content = endpoint.RequestBody.Content.FirstOrDefault();
+        if (content.Value == null)
         {
-            sb.AppendLine("## Servers");
-            sb.AppendLine();
-            foreach (var server in endpoint.Servers)
-            {
-                sb.AppendLine($"- `{server}`");
-            }
-            sb.AppendLine();
+            return;
         }
 
-        // Parameters
-        if (endpoint.Parameters.Any())
-        {
-            sb.AppendLine("## Parameters");
-            sb.AppendLine();
-            sb.AppendLine("| Name | In  | Type | Required | Description |");
-            sb.AppendLine("|------|-----|------|----------|-------------|");
+        sb.AppendLine($"**Content-Type:** `{content.Key}`");
+        sb.AppendLine();
 
-            foreach (var param in endpoint.Parameters)
-            {
-                var req = param.Required ? "✓" : "";
-                var type = param.Schema?.Type ?? "string";
-                var desc = param.Description ?? "";
-                var inLocation = param.In?.ToString() ?? "unknown";
-                sb.AppendLine($"| `{param.Name}` | {inLocation} | {type} | {req} | {desc} |");
-            }
-            sb.AppendLine();
+        AppendSchemaBlock(sb, content.Value.Schema, "###");
+        AppendExampleBlock(sb, content.Value.Example, "###");
+    }
+
+    private void AppendResponsesSection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (!endpoint.Responses.Any())
+        {
+            return;
         }
 
-        // Request Body
-        if (endpoint.RequestBody != null)
+        sb.AppendLine("## Responses");
+        sb.AppendLine();
+
+        foreach (var response in endpoint.Responses.OrderBy(r => r.Key))
         {
-            sb.AppendLine("## Request Body");
+            sb.AppendLine($"### {response.Key} - {response.Value.Description ?? "Response"}");
             sb.AppendLine();
 
-            if (endpoint.RequestBody.Required)
+            var content = response.Value.Content.FirstOrDefault();
+            if (content.Value == null)
             {
-                sb.AppendLine("**Required:** Yes");
-                sb.AppendLine();
+                continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(endpoint.RequestBody.Description))
-            {
-                sb.AppendLine(endpoint.RequestBody.Description);
-                sb.AppendLine();
-            }
+            sb.AppendLine($"**Content-Type:** `{content.Key}`");
+            sb.AppendLine();
 
-            // Get first content type
-            var content = endpoint.RequestBody.Content.FirstOrDefault();
-            if (content.Value != null)
-            {
-                sb.AppendLine($"**Content-Type:** `{content.Key}`");
-                sb.AppendLine();
+            AppendSchemaBlock(sb, content.Value.Schema, "####");
+            AppendExampleBlock(sb, content.Value.Example, "####");
+        }
+    }
 
-                if (content.Value.Schema != null)
-                {
-                    sb.AppendLine("### Schema");
-                    sb.AppendLine();
-                    sb.AppendLine("```json");
-                    sb.AppendLine(SerializeSchema(content.Value.Schema));
-                    sb.AppendLine("```");
-                    sb.AppendLine();
-                }
-
-                if (content.Value.Example != null)
-                {
-                    sb.AppendLine("### Example");
-                    sb.AppendLine();
-                    sb.AppendLine("```json");
-                    sb.AppendLine(SerializeExample(content.Value.Example));
-                    sb.AppendLine("```");
-                    sb.AppendLine();
-                }
-            }
+    private static void AppendSecuritySection(StringBuilder sb, OpenApiEndpoint endpoint)
+    {
+        if (!endpoint.Security.Any())
+        {
+            return;
         }
 
-        // Responses
-        if (endpoint.Responses.Any())
+        sb.AppendLine("## Security");
+        sb.AppendLine();
+        foreach (var requirement in endpoint.Security.Distinct())
         {
-            sb.AppendLine("## Responses");
-            sb.AppendLine();
+            sb.AppendLine($"- {requirement}");
+        }
+        sb.AppendLine();
+    }
 
-            foreach (var response in endpoint.Responses.OrderBy(r => r.Key))
-            {
-                sb.AppendLine($"### {response.Key} - {response.Value.Description ?? "Response"}");
-                sb.AppendLine();
-
-                var content = response.Value.Content.FirstOrDefault();
-                if (content.Value != null)
-                {
-                    sb.AppendLine($"**Content-Type:** `{content.Key}`");
-                    sb.AppendLine();
-
-                    if (content.Value.Schema != null)
-                    {
-                        sb.AppendLine("#### Schema");
-                        sb.AppendLine();
-                        sb.AppendLine("```json");
-                        sb.AppendLine(SerializeSchema(content.Value.Schema));
-                        sb.AppendLine("```");
-                        sb.AppendLine();
-                    }
-
-                    if (content.Value.Example != null)
-                    {
-                        sb.AppendLine("#### Example");
-                        sb.AppendLine();
-                        sb.AppendLine("```json");
-                        sb.AppendLine(SerializeExample(content.Value.Example));
-                        sb.AppendLine("```");
-                        sb.AppendLine();
-                    }
-                }
-            }
+    private void AppendSchemaBlock(StringBuilder sb, OpenApiSchema? schema, string headingPrefix)
+    {
+        if (schema == null)
+        {
+            return;
         }
 
-        // Security
-        if (endpoint.Security.Any())
+        sb.AppendLine($"{headingPrefix} Schema");
+        sb.AppendLine();
+        sb.AppendLine("```json");
+        sb.AppendLine(SerializeSchema(schema));
+        sb.AppendLine("```");
+        sb.AppendLine();
+    }
+
+    private void AppendExampleBlock(StringBuilder sb, IOpenApiAny? example, string headingPrefix)
+    {
+        if (example == null)
         {
-            sb.AppendLine("## Security");
-            sb.AppendLine();
-            foreach (var sec in endpoint.Security.Distinct())
-            {
-                sb.AppendLine($"- {sec}");
-            }
-            sb.AppendLine();
+            return;
         }
 
-        return sb.ToString();
+        sb.AppendLine($"{headingPrefix} Example");
+        sb.AppendLine();
+        sb.AppendLine("```json");
+        sb.AppendLine(SerializeExample(example));
+        sb.AppendLine("```");
+        sb.AppendLine();
     }
 
     /// <summary>
