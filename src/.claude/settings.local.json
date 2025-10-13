@@ -10,7 +10,21 @@
       "Bash(dotnet build)",
       "Bash(dotnet build:*)",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:devblogs.microsoft.com)",
+      "Bash(dotnet package search:*)",
+      "Bash(dotnet nuget locals:*)",
+      "Read(//Users/vesselin/.nuget/packages/**)",
+      "Bash(dotnet ilspycmd:*)",
+      "Bash(find:*)",
+      "Bash(dotnet test:*)",
+      "Bash(cat:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(./SemanticHub.Tests --filter \"*OpenApiIngestion*\")",
+      "Bash(./SemanticHub.Tests:*)",
+      "Bash(dotnet-script:*)",
+      "Bash(dotnet run:*)",
+      "Bash(az cognitiveservices account list-deleted:*)"
     ],
     "deny": [],
     "ask": []

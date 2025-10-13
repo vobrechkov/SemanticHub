@@ -1,66 +1,51 @@
 # SemanticHub
 
-A sample application that explores integrating Microsoft Kernel Memory as the memory store for Microsoft Semantic Kernel using the "memory as a service" architecture pattern.
+A sample application that demonstrates a Retrieval Augmented Generation (RAG) architecture for the Microsoft Agent Framework (MAF) using Azure AI Search as the memory store and Azure OpenAI for both chat and embeddings. The solution is orchestrated with .NET Aspire for repeatable local and cloud deployments.
 
 ## Overview
 
-This solution demonstrates how to implement Microsoft Kernel Memory as a dedicated service within a .NET Aspire application. The solution uses .NET Aspire for orchestration and service discovery, providing a scalable architecture for AI applications.
+The original version of this repository relied on Microsoft Kernel Memory as an external service. The current iteration replaces that dependency with a modern, MAF-aligned data plane built on:
+
+- **Azure AI Search** for hybrid + vector retrieval
+- **Azure OpenAI** for chat completions and embedding generation
+- **Azure-powered ingestion pipeline** implemented in .NET for chunking, embedding, and indexing content
 
 ## Architecture
 
-The solution consists of several interconnected services:
+The solution consists of the following projects:
 
-- **SemanticHub.AppHost** - .NET Aspire AppHost that orchestrates all services, handles service discovery, and manages dependencies
-- **SemanticHub.KernelMemoryService** - Dedicated service that provides Kernel Memory functionality as a web service
-- **SemanticHub.KnowledgeApi** - Web API service that exposes knowledge/memory endpoints and proxies requests to KernelMemoryService
-- **SemanticHub.Web** - Blazor Server UI that provides the frontend interface
-- **SemanticHub.WebApp** - Next.js/React dashboard UI (modern alternative to Blazor UI)
-- **SemanticHub.ServiceDefaults** - Shared service configuration and extensions
-- **SemanticHub.Tests** - xUnit test project for integration testing
+- **SemanticHub.AppHost** – .NET Aspire AppHost responsible for provisioning Azure resources (Azure AI Search, Azure OpenAI) and wiring up service discovery.
+- **SemanticHub.Api** – The main REST API hosting Microsoft Agent Framework agents, knowledge tools, and multi-agent workflows.
+- **SemanticHub.IngestionService** – Service responsible for ingesting Markdown and other sources, generating embeddings with Azure OpenAI, and indexing content into Azure AI Search.
+- **SemanticHub.Web** – Blazor Server application (legacy UI kept for reference).
+- **SemanticHub.WebApp** – Next.js/React dashboard that consumes the agent API.
+- **SemanticHub.ServiceDefaults** – Shared Aspire configuration (service discovery, resilience, telemetry).
+- **SemanticHub.Tests** – xUnit test suite.
 
 ### Service Dependencies
 
-The AppHost defines the following service dependency chain:
-1. Azurite storage emulator (for document storage and queues)
-2. PostgreSQL with pgvector (for vector storage and memory database)
-3. Azure OpenAI (for text generation and embeddings)
-4. Redis cache (for Web UI caching)
-5. KernelMemoryService depends on Azurite, PostgreSQL, and Azure OpenAI
-6. KnowledgeApi depends on KernelMemoryService
-7. Web UI depends on Redis and KnowledgeApi
+The Aspire AppHost provisions Azure resources and orchestrates the services in the following order:
+
+1. **Azure AI Search** – provisioned with an index tailored for hybrid + vector retrieval.
+2. **Azure OpenAI** – chat and embedding deployments (model names configurable via environment variables).
+3. **SemanticHub.IngestionService** – depends on Azure AI Search and Azure OpenAI to ingest content.
+4. **SemanticHub.Api** – depends on Azure AI Search, Azure OpenAI, and the ingestion service for tool calls.
+5. **SemanticHub.WebApp** – depends on the API (and optionally Redis for caching).
 
 ## Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (for Azurite, PostgreSQL, and Redis containers)
-- Azure OpenAI account and deployment (for text generation and embeddings)
+- [Node.js 20+](https://nodejs.org/) (only required for the `SemanticHub.WebApp` Next.js frontend)
+- Azure subscription with permissions to provision:
+  - Azure AI Search (Free SKU is sufficient for local development)
+  - Azure OpenAI (chat + embeddings deployments)
+- Optional: Redis (if you want to enable output caching in the Blazor UI)
 
 ## Local Development Setup
 
-### 1. Azurite Storage Emulator
-
-The Azurite storage emulator is automatically managed by .NET Aspire. When you run the AppHost, it will:
-
-- Automatically pull and start the `mcr.microsoft.com/azure-storage/azurite` container
-- Configure blob storage endpoints for document storage
-- Provide a local development environment that mimics Azure Storage
-
-**No manual setup required** - Aspire handles container lifecycle management automatically.
-
-#### Accessing Azurite
-
-Once running, you can access Azurite through:
-- **Blob Service**: `http://127.0.0.1:<dynamic-port>`
-- **Azure Storage Explorer**: Automatically discovers Azurite on default ports
-- **Aspire Dashboard**: Monitor container status and logs
-
-### 2. PostgreSQL with pgvector
-
-PostgreSQL with pgvector extension is automatically managed by Aspire for vector storage and memory database operations. The service uses the `ankane/pgvector:latest` image which includes the pgvector extension for efficient vector similarity searches.
-
-### 3. Redis Cache
-
-Redis is automatically managed by Aspire for Web UI output caching.
+1. **Configure Azure resource names** – Edit `src/SemanticHub.AppHost/AppHost.cs` if you want to change the default resource names for Azure AI Search and Azure OpenAI (the sample uses `semhub-eus-dev-*`).
+2. **Provide Azure credentials** – Use `dotnet user-secrets` (recommended) or environment variables to provide Azure OpenAI API keys during local development. Aspire service discovery will inject these values into the services.
+3. **Optional Redis** – If you want to enable the Blazor UI output cache, ensure a Redis instance is available; Aspire can provision a container automatically when you run the AppHost.
 
 ## Getting Started
 
@@ -80,47 +65,39 @@ dotnet run --project src/SemanticHub.AppHost
 ```
 
 This will start all services with proper dependency management:
-1. Azurite storage emulator
-2. PostgreSQL with pgvector
-3. Redis cache
-4. KernelMemoryService
-5. KnowledgeApi
-6. Web UI
+1. Azure AI Search (provisioned via Azure resource manager)
+2. Azure OpenAI (chat + embeddings deployments)
+3. SemanticHub.IngestionService (document ingestion + indexing)
+4. SemanticHub.Api (agent endpoints and workflows)
+5. SemanticHub.WebApp (Next.js frontend)
 
 ### 3. Access the Services
 
-- **Aspire Dashboard**: `https://localhost:<aspire-port>` (check console output)
-- **Web UI (Blazor)**: `https://localhost:<web-port>` (check console output)
-- **WebApp (Next.js/React)**: `http://localhost:3000` (check Aspire dashboard)
-- **KnowledgeApi**: `https://localhost:<api-port>` (check console output)
-- **KernelMemoryService**: `https://localhost:<memory-port>` (check console output)
+- **Aspire Dashboard**: `https://localhost:<aspire-port>`
+- **Agent API (SemanticHub.Api)**: `https://localhost:<api-port>` – provides `/api/agents` and `/api/workflows` endpoints with Scalar API reference in development.
+- **Ingestion Service**: `https://localhost:<ingestion-port>` – exposes `/ingestion/markdown` for document ingestion.
+- **WebApp (Next.js)**: `http://localhost:3000` – the modern UI served via the NPM app resource.
+- **Blazor Web (optional)**: `https://localhost:<web-port>` – legacy UI retained for comparison.
 
 ## API Endpoints
 
-### KernelMemoryService
+### SemanticHub.Api (Agent + Workflow Endpoints)
 
-The KernelMemoryService exposes the Microsoft Kernel Memory endpoints under `/api/memory`:
+- `POST /api/agents/chat` – one-shot conversations with the default agent (tool execution allowed).
+- `POST /api/agents/chat/stream` – streaming variant for real-time updates.
+- `POST /api/workflows/ingest` – runs the multi-agent ingestion workflow (validation → extraction → indexing → verification).
+- `POST /api/workflows/research` – full research workflow (search → analysis → synthesis).
+- `POST /api/workflows/research/fast` – two-step quick research workflow.
+- `GET /api/agents/health` & `GET /api/workflows/health` – health checks for Aspire.
 
-- `POST /api/memory/upload` - Upload documents (text or files)
-- `POST /api/memory/ask` - Ask questions about stored documents
-- `POST /api/memory/search` - Search through stored knowledge
-- `GET /api/memory/documents/{id}/status` - Check document processing status
-- `DELETE /api/memory/documents/{id}` - Delete documents
-- `GET /api/memory/index` - List available indexes
+Interactive documentation is available via [Scalar](https://scalar.com/) in development at the API root.
 
-### KnowledgeApi
+### SemanticHub.IngestionService
 
-The KnowledgeApi provides a simplified interface that proxies requests to KernelMemoryService:
+- `POST /ingestion/markdown` – Accepts Markdown content (with optional YAML frontmatter) and indexes it into Azure AI Search. The response includes document identifiers and chunk counts.
+- Additional ingestion surfaces (web scraping, OpenAPI conversion) are stubbed for future expansion.
 
-- `POST /knowledge/upload/text` - Upload text documents
-- `POST /knowledge/ask` - Ask questions about documents
-- `POST /knowledge/search` - Search knowledge base
-- `GET /knowledge/documents/{id}/status` - Get document processing status
-
-### Interactive API Documentation
-
-- **KernelMemoryService**: Available at the service root URL (uses Scalar API Reference)
-- **KnowledgeApi**: Available at `/swagger` (development only)
+The ingestion service also exposes health endpoints through Aspire's `MapDefaultEndpoints` when running in development.
 
 ## Configuration
 
@@ -131,28 +108,28 @@ The solution uses environment-specific configuration files:
 - `appsettings.json` - Base configuration
 - `appsettings.Development.json` - Development overrides
 
-### Storage Configuration
+### Agent API Configuration
 
-- **Document Storage**: Azurite blob storage (local development)
-- **Vector Storage**: PostgreSQL with pgvector extension
-- **Message Queues**: Azure Storage Queues (via Azurite emulator)
-- **Cache**: Redis (for Web UI output caching)
+`appsettings.json` under `SemanticHub.Api` exposes an `AgentFramework` section:
 
-### AI Services Configuration
+- `AzureOpenAI` – endpoint, chat deployment, embedding deployment, optional API key.
+- `DefaultAgent` – default name/instructions/model when the caller does not supply overrides.
+- `Memory.AzureSearch` – index name, field mapping (key/content/title/summary/vector), semantic configuration name, k-nearest-neighbour setting, and thresholds for relevance.
 
-The solution requires Azure OpenAI configuration:
+### Ingestion Service Configuration
 
-- **Text Generation**: GPT-4o-mini (configurable deployment name: `gpt-4o-mini`)
-- **Embeddings**: Text-embedding-3-small (configurable deployment name: `text-embedding-3-small`)
-- **Authentication**: Azure Identity (for production) or connection strings (for development)
+`SemanticHub.IngestionService/appsettings.json` contains the ingestion pipeline settings:
+
+- `AzureOpenAI` – embedding deployment used to vectorise chunks.
+- `AzureSearch` – index/schema metadata used during index creation and document uploads.
+- `Chunking` – parameters for the semantic chunker (target tokens, max tokens, overlap).
+
+Both services honour environment variables supplied by Aspire when you run the AppHost (e.g. `AgentFramework__AzureOpenAI__Endpoint`, `Ingestion__AzureSearch__IndexName`).
 
 ### Environment Configuration
 
-Environment-specific configuration is handled through:
-
-- **AppHost**: Automatically configures connection strings and environment variables
-- **Development**: Uses connection strings for local emulators
-- **Production**: Uses Azure Identity for secure authentication
+- **Local development** – Provide Azure OpenAI credentials through user secrets or environment variables. Aspire will provision Azure AI Search locally via the Azure provisioning SDK or use existing resources if they already exist.
+- **Production** – Configure MSI/Managed Identity or service principals. Both services fall back to `DefaultAzureCredential` when an API key is not provided.
 
 ## Development Commands
 
@@ -165,9 +142,9 @@ dotnet build src/SemanticHub.sln
 dotnet run --project src/SemanticHub.AppHost
 
 # Run individual services (for development)
+dotnet run --project src/SemanticHub.Api
+dotnet run --project src/SemanticHub.IngestionService
 dotnet run --project src/SemanticHub.Web
-dotnet run --project src/SemanticHub.KnowledgeApi
-dotnet run --project src/SemanticHub.KernelMemoryService
 ```
 
 ### Testing
@@ -181,22 +158,17 @@ dotnet test --collect:"XPlat Code Coverage"
 
 ## Troubleshooting
 
-### Container Issues
+### Azure Provisioning Issues
 
-If you encounter container-related issues:
-
-1. **Containers not starting**: Check Docker Desktop is running
-2. **Port conflicts**: Aspire will automatically assign available ports
-3. **Azurite connectivity**: Storage Explorer should auto-discover Azurite
-4. **PostgreSQL connectivity**: Check that pgvector image pulled successfully (`ankane/pgvector:latest`)
+1. **Resource name conflicts** – ensure the names configured in `AppHost.cs` are globally unique within the target Azure subscription.
+2. **Insufficient permissions** – AppHost provisioning requires `Contributor` (or more granular) permissions for Azure AI Search and Azure OpenAI.
+3. **Model availability** – confirm the chosen chat/embedding models are available in the Azure OpenAI region you selected.
 
 ### Service Discovery Issues
 
-If services can't communicate:
-
-1. Check the Aspire dashboard for service status
-2. Verify all services are running and healthy
-3. Check service logs in the Aspire dashboard
+1. Confirm that Aspire reports all dependent resources as healthy in the dashboard.
+2. When running services individually, ensure the `ASPNETCORE_ENVIRONMENT` and connection strings match the expected index names and deployments.
+3. Inspect application logs for HTTP tool call failures (e.g. ingestion service returning errors if the index is missing).
 
 ### Build Issues
 
@@ -208,15 +180,14 @@ If you encounter build errors:
 
 ## Architecture Notes
 
-- Uses .NET Aspire for service orchestration and health checks
-- Azurite provides local Azure Storage emulation for documents and queues
-- PostgreSQL with pgvector extension handles vector storage and memory database
-- Redis provides output caching for the Web UI
-- The Web project uses Blazor Server with interactive server components
-- Services communicate via HTTP with service discovery handled by Aspire
-- OpenTelemetry is configured for observability across services
-- Health checks are implemented at `/health` endpoints
-- Microsoft Kernel Memory runs as a dedicated service with full API exposure
+- Uses .NET Aspire for service orchestration, provisioning, and health checks.
+- Azure AI Search hosts the knowledge index (semantic + vector search).
+- Azure OpenAI supplies chat and embedding deployments used by both the agent and ingestion pipeline.
+- Redis (optional) provides output caching for the Blazor UI.
+- The Web project uses Blazor Server; the WebApp uses Next.js.
+- Services communicate via HTTP with Aspire service discovery.
+- OpenTelemetry is configured for observability across services.
+- Health checks are available via Aspire's default endpoints in development.
 
 ## User Interfaces
 
@@ -241,14 +212,9 @@ Both UIs provide the same core functionality:
 
 ## Key Features
 
-- **Memory as a Service**: Kernel Memory runs as an independent, scalable service
-- **Service Discovery**: Automatic service resolution via Aspire
-- **Local Development**: Zero-configuration local setup with emulators and containers
-- **Vector Search**: PostgreSQL with pgvector for efficient similarity searches
-- **Distributed Processing**: Azure Storage Queues for scalable document processing
-- **AI Integration**: Azure OpenAI for text generation and embeddings
-- **Observability**: Full OpenTelemetry integration with Aspire dashboard
-- **Interactive Documentation**: Scalar API Reference for KernelMemoryService
-- **Scalability**: Services can be scaled independently
-- **Modern Architecture**: .NET 9, Aspire, and cloud-native patterns
-- **Multiple UI Options**: Choose between Blazor Server or Next.js/React
+- **Modern MAF-aligned RAG** – Azure AI Search provides hybrid/vector retrieval backed by Azure OpenAI embeddings.
+- **Agent-aware ingestion** – Dedicated ingestion service handles chunking, embedding, and indexing with configurable chunking strategy.
+- **Tool-enabled agents** – Agents can search, list, check status, and ingest content through registered Microsoft Agent Framework tools.
+- **Service discovery & resilience** – Aspire manages resource provisioning, health checks, resilience policies, and connection strings.
+- **Observability** – OpenTelemetry tracing/metrics and Scalar-based API docs for all HTTP services.
+- **Polyglot UI** – Blazor Server and Next.js frontends consuming the same agent/back-end stack.

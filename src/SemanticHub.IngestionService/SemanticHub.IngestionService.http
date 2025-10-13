@@ -1,0 +1,6 @@
+@SemanticHub.IngestionService_HostAddress = http://localhost:5269
+
+GET {{SemanticHub.IngestionService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

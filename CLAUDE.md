@@ -4,26 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a .NET 9 solution that explores integrating Microsoft Kernel Memory as the memory store for Microsoft Semantic Kernel. The solution uses .NET Aspire for orchestration and service discovery.
+This is a .NET 9 solution that demonstrates a Microsoft Agent Framework (MAF) RAG stack using Azure AI Search as the knowledge store and Azure OpenAI for chat/embeddings. .NET Aspire handles orchestration and service discovery.
 
 ## Project Structure
 
 The solution consists of several interconnected services:
 
-- **SemanticHub.AppHost** - .NET Aspire AppHost that orchestrates all services, handles service discovery, and manages dependencies. Contains the main orchestration logic in `AppHost.cs`.
-- **SemanticHub.KernelMemoryService** - Service that provides Kernel Memory functionality (memory store integration)
-- **SemanticHub.KnowledgeApi** - Web API service that exposes knowledge/memory endpoints
-- **SemanticHub.Web** - Blazor Server UI that provides the frontend interface
-- **SemanticHub.ServiceDefaults** - Shared service configuration and extensions
-- **SemanticHub.Tests** - xUnit test project for integration testing
+- **SemanticHub.AppHost** – .NET Aspire AppHost that provisions Azure AI Search/OpenAI resources and wires service discovery (`AppHost.cs`).
+- **SemanticHub.Api** – Agent-facing API exposing chat endpoints, tools, and workflows powered by Microsoft Agent Framework.
+- **SemanticHub.IngestionService** – Document ingestion pipeline (chunking, embeddings, Azure AI Search indexing).
+- **SemanticHub.Web** – Blazor Server UI (legacy sample).
+- **SemanticHub.WebApp** – Next.js/React UI.
+- **SemanticHub.ServiceDefaults** – Shared service configuration and extensions.
+- **SemanticHub.Tests** – xUnit test project for integration testing.
 
 ## Service Dependencies
 
 The AppHost defines the following service dependency chain:
-1. Redis cache (foundational dependency)
-2. KernelMemoryService depends on Redis
-3. KnowledgeApi depends on KernelMemoryService
-4. Web UI depends on both Redis and KnowledgeApi
+1. Azure AI Search (index provisioning)
+2. Azure OpenAI (chat + embeddings deployments)
+3. IngestionService depends on Azure Search + Azure OpenAI
+4. SemanticHub.Api depends on Azure Search + Azure OpenAI + IngestionService
+5. Web/WebApp depend on the API (and optionally Redis for caching)
 
 ## Development Commands
 
@@ -50,16 +52,16 @@ dotnet test src/SemanticHub.Tests
 
 ## Architecture Notes
 
-- Uses .NET Aspire for service orchestration and health checks
-- Redis is used for caching and potentially as a backing store
-- The Web project uses Blazor Server with interactive server components
-- Services communicate via HTTP with service discovery handled by Aspire
-- OpenTelemetry is configured for observability across services
-- Health checks are implemented at `/health` endpoints
+- Aspire coordinates Azure resource provisioning and injects connection strings for Azure AI Search and Azure OpenAI.
+- Ingestion service performs semantic chunking and embedding generation before upserting into Azure AI Search.
+- Agents obtain grounding context and retrieve documents using registered AI tools backed by Azure AI Search.
+- Redis output caching remains optional for the Blazor UI.
+- OpenTelemetry instrumentation and Scalar API docs are enabled in development.
+- Health checks are exposed via Aspire's default endpoints (`/health`, `/alive`) in development.
 
 ## Key Configuration
 
-- All services use `builder.AddServiceDefaults()` for common Aspire configuration
-- Redis output caching is configured in the Web project
-- Service discovery uses `https+http://` scheme for HTTPS preference
-- The AppHost waits for dependent services before starting dependent ones
+- All services call `builder.AddServiceDefaults()` for service discovery/resilience/telemetry.
+- Agent API options live under `AgentFramework` (Azure OpenAI + Azure AI Search section).
+- Ingestion service options live under `Ingestion` (Azure OpenAI embeddings, Azure AI Search index schema, chunking settings).
+- Aspire uses service-discovery URLs with the `https+http://` scheme for HTTPS preference when available.

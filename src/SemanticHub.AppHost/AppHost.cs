@@ -1,59 +1,71 @@
-using Microsoft.Extensions.Hosting;
+using Azure.Core;
+using Azure.Provisioning.CognitiveServices;
+using Azure.Provisioning.Search;
+
+const string KnowledgeIndexName = "knowledge-index";
+const string ContentFieldName = "content";
+const string TitleFieldName = "title";
+const string SummaryFieldName = "summary";
+const string VectorFieldName = "contentVector";
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var openai = builder.AddAzureOpenAI("openai");
-var storage = builder.AddAzureStorage("storage").RunAsEmulator();
-var blobs = storage.AddBlobs("blobs");
-var queues = storage.AddQueues("queues");
+var search = builder.AddAzureSearch("search")
+    .ConfigureInfrastructure(infra =>
+    {
+        var searchService = infra.GetProvisionableResources().OfType<SearchService>().Single();
+        searchService.Name = "semhub-eus-dev-search";
+        searchService.Location = AzureLocation.EastUS;
+        searchService.SearchSkuName = SearchServiceSkuName.Free;
+    });
+
+var openai = builder.AddAzureOpenAI("openai")
+    .ConfigureInfrastructure(infra =>
+    {
+        var cogAccount = infra.GetProvisionableResources().OfType<CognitiveServicesAccount>().Single();
+        cogAccount.Name = "semhub-eus-dev-openai";
+        cogAccount.Location = AzureLocation.EastUS;
+    });
+
 var chatDeployment = openai.AddDeployment("chat", "gpt-4o-mini", "2024-07-18");
 var embeddingDeployment = openai.AddDeployment("embedding", "text-embedding-3-small", "1");
-var cache = builder.AddRedis("cache", 16379);
-var postgres = builder.AddPostgres("postgres")
-    .WithBindMount(
-        // Enables `vector` extension
-        source: Path.Combine("Infrastructure", "postgres", "init.sql"),
-        target: "/docker-entrypoint-initdb.d/init.sql", 
-        isReadOnly: true)
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent)
-    .WithImage("ankane/pgvector") // Image with `pgvector` support
-    .WithImageTag("latest")
-    .WithHostPort(15432);
 
-var kernelMemory = builder.AddProject<Projects.SemanticHub_KernelMemoryService>("kernelmemory")
-    .WithReference(blobs).WaitFor(blobs)
-    .WithReference(queues).WaitFor(queues)
+var ingestion = builder.AddProject<Projects.SemanticHub_IngestionService>("ingestion")
     .WithReference(openai).WaitFor(openai)
-    .WithReference(postgres).WaitFor(postgres)
-    .WithEnvironment("KernelMemory__Services__AzureBlobs__Container", blobs.Resource.Name)
-    .WithEnvironment("KernelMemory__Services__AzureOpenAIText_Deployment", chatDeployment.Resource.Name)
-    .WithEnvironment("KernelMemory__Services__AzureOpenAIEmbedding_Deployment", embeddingDeployment.Resource.Name)
-    .WithEnvironment("KernelMemory__Services__Postgres__ConnectionString", postgres.Resource.ConnectionStringExpression)
-    .WithExternalHttpEndpoints();
+    .WithReference(search).WaitFor(search)
+    .WithEnvironment("Ingestion__AzureOpenAI__EmbeddingDeployment", embeddingDeployment.Resource.Name)
+    .WithEnvironment("Ingestion__AzureSearch__IndexName", KnowledgeIndexName)
+    .WithEnvironment("Ingestion__AzureSearch__ContentField", ContentFieldName)
+    .WithEnvironment("Ingestion__AzureSearch__TitleField", TitleFieldName)
+    .WithEnvironment("Ingestion__AzureSearch__SummaryField", SummaryFieldName)
+    .WithEnvironment("Ingestion__AzureSearch__VectorField", VectorFieldName)
+    .WithEnvironment("Ingestion__AzureSearch__ParentDocumentField", "parentDocumentId")
+    .WithEnvironment("Ingestion__AzureSearch__ChunkTitleField", "chunkTitle")
+    .WithEnvironment("Ingestion__AzureSearch__ChunkIndexField", "chunkIndex")
+    .WithEnvironment("Ingestion__AzureSearch__MetadataField", "metadataJson");
 
-if (builder.Environment.IsDevelopment())
-{
-    // Use connection strings for local development with emulators since Azure Identity is not supported
-    kernelMemory = kernelMemory
-        .WithEnvironment("KernelMemory__Services__AzureBlobs__ConnectionString", blobs.Resource.ConnectionStringExpression)
-        .WithEnvironment("KernelMemory__Services__AzureQueues__ConnectionString", queues.Resource.ConnectionStringExpression);
-}
+var agentApi = builder.AddProject<Projects.SemanticHub_Api>("agent-api")
+    .WithReference(openai).WaitFor(openai)
+    .WithReference(search).WaitFor(search)
+    .WithReference(ingestion).WaitFor(ingestion)
+    .WithExternalHttpEndpoints()
+    .WithHttpHealthCheck("/health")
+    .WithEnvironment("AgentFramework__AzureOpenAI__ChatDeployment", chatDeployment.Resource.Name)
+    .WithEnvironment("AgentFramework__AzureOpenAI__EmbeddingDeployment", embeddingDeployment.Resource.Name)
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__IndexName", KnowledgeIndexName)
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__ContentField", ContentFieldName)
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__TitleField", TitleFieldName)
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__SummaryField", SummaryFieldName)
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__VectorField", VectorFieldName)
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__ParentDocumentField", "parentDocumentId")
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__ChunkTitleField", "chunkTitle")
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__ChunkIndexField", "chunkIndex")
+    .WithEnvironment("AgentFramework__Memory__AzureSearch__MetadataField", "metadataJson");
 
-var api = builder.AddProject<Projects.SemanticHub_KnowledgeApi>("knowledge-api")
-    .WithReference(kernelMemory).WaitFor(kernelMemory);
-
-//builder.AddProject<Projects.SemanticHub_Web>("web-ui")
-//    .WithExternalHttpEndpoints()
-//    .WithHttpHealthCheck("/health")
-//    .WithReference(api).WaitFor(api)
-//    .WithReference(cache).WaitFor(cache);
-
-// Add Next.js React web app
 var webApp = builder.AddNpmApp("webapp", "../SemanticHub.WebApp", "dev")
     .WithHttpEndpoint(port: 3000, env: "PORT")
     .WithExternalHttpEndpoints()
-    .WithEnvironment("KNOWLEDGE_API_URL", api.GetEndpoint("http"))
-    .WithReference(api).WaitFor(api);
+    .WithEnvironment("AGENT_API_URL", agentApi.GetEndpoint("http"))
+    .WithReference(agentApi).WaitFor(agentApi);
 
 builder.Build().Run();
