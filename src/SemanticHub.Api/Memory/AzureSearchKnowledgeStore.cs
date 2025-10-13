@@ -4,7 +4,6 @@ using Azure.Search.Documents.Models;
 using Microsoft.Extensions.AI;
 using SemanticHub.Api.Configuration;
 using System.Text.Json;
-using System.Linq;
 
 namespace SemanticHub.Api.Memory;
 

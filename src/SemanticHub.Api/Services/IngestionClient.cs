@@ -85,4 +85,43 @@ public class IngestionClient(HttpClient httpClient, ILogger<IngestionClient> log
                 : errorText
         };
     }
+
+    public async Task<OpenApiIngestionResponse> IngestOpenApiAsync(
+        OpenApiIngestionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            "/ingestion/openapi",
+            request,
+            cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var payload = await response.Content.ReadFromJsonAsync<OpenApiIngestionResponse>(
+                cancellationToken: cancellationToken);
+
+            return payload ?? new OpenApiIngestionResponse
+            {
+                Success = true,
+                SpecSource = request.SpecSource,
+                EndpointsProcessed = 0,
+                TotalEndpoints = 0,
+                TotalChunksIndexed = 0
+            };
+        }
+
+        var errorText = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning("OpenAPI ingestion API returned {Status}: {Error}", response.StatusCode, errorText);
+
+        return new OpenApiIngestionResponse
+        {
+            Success = false,
+            SpecSource = request.SpecSource,
+            ErrorMessage = string.IsNullOrWhiteSpace(errorText)
+                ? $"Ingestion service returned status {(int)response.StatusCode}"
+                : errorText
+        };
+    }
 }

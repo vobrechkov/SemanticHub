@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Models;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Models;
+using SemanticHub.IngestionService.Diagnostics;
 using System.Text.Json;
 
 namespace SemanticHub.IngestionService.Services;
@@ -23,10 +26,45 @@ public class AzureSearchIndexer(
             return;
         }
 
+        using var activity = IngestionTelemetry.ActivitySource.StartActivity("UploadChunks");
+        activity?.SetTag("ingestion.index", options.AzureSearch.IndexName);
+        activity?.SetTag("ingestion.chunk.count", chunks.Count);
+
+        var stopwatch = Stopwatch.StartNew();
+        var tags = new TagList
+        {
+            { "index", options.AzureSearch.IndexName },
+            { "status", "success" }
+        };
+
         var batch = IndexDocumentsBatch.Create(
             chunks.Select(chunk => IndexDocumentsAction.MergeOrUpload(ToSearchDocument(chunk))).ToArray());
 
-        await searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken);
+        try
+        {
+            await searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken);
+
+            stopwatch.Stop();
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            IngestionTelemetry.SearchUploadSeconds.Record(stopwatch.Elapsed.TotalSeconds, tags);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+
+            var failureTags = new TagList
+            {
+                { "index", options.AzureSearch.IndexName },
+                { "status", "failed" }
+            };
+
+            IngestionTelemetry.SearchUploadSeconds.Record(stopwatch.Elapsed.TotalSeconds, failureTags);
+
+            logger.LogError(ex, "Failed to upload {ChunkCount} chunks to index {IndexName}", chunks.Count, options.AzureSearch.IndexName);
+            throw;
+        }
     }
 
     private SearchDocument ToSearchDocument(DocumentChunk chunk)

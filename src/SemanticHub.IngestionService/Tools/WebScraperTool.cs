@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.Playwright;
 using SemanticHub.IngestionService.Models;
 using System.Xml.Linq;
+using SemanticHub.IngestionService.Diagnostics;
 
 namespace SemanticHub.IngestionService.Tools;
 
@@ -36,6 +38,10 @@ public class WebScraperTool(ILogger<WebScraperTool> logger)
         {
             await InitializeAsync();
         }
+
+        using var activity = IngestionTelemetry.ActivitySource.StartActivity("ScrapeWebPage");
+        activity?.SetTag("ingestion.scraper.url", url);
+        var stopwatch = Stopwatch.StartNew();
 
         logger.LogInformation("Scraping single page: {Url}", url);
 
@@ -78,11 +84,18 @@ public class WebScraperTool(ILogger<WebScraperTool> logger)
                 ScrapedAt = DateTime.UtcNow
             };
 
+            stopwatch.Stop();
+            activity?.SetTag("ingestion.scraper.durationMs", stopwatch.Elapsed.TotalMilliseconds);
+            activity?.SetTag("ingestion.scraper.statusCode", response.Status);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
             logger.LogInformation("Successfully scraped page: {Title} ({Url})", title, url);
             return scrapedPage;
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             logger.LogError(ex, "Error scraping page: {Url}", url);
             return new ScrapedPage
             {

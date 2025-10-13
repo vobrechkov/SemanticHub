@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.AI;
 using SemanticHub.IngestionService.Configuration;
+using SemanticHub.IngestionService.Diagnostics;
 
 namespace SemanticHub.IngestionService.Services;
 
@@ -44,23 +47,59 @@ public class AzureOpenAIEmbeddingService
             throw new InvalidOperationException("Azure OpenAI embedding deployment is not configured.");
         }
 
-        var response = await _embeddingGenerator.GenerateAsync(
-            inputs,
-            _embeddingOptions,
-            cancellationToken);
+        using var activity = IngestionTelemetry.ActivitySource.StartActivity("GenerateEmbeddings");
+        activity?.SetTag("ingestion.embedding.deployment", _options.AzureOpenAI.EmbeddingDeployment);
+        activity?.SetTag("ingestion.embedding.inputCount", inputs.Count);
 
-        var embeddings = new List<float[]>(response.Count);
-
-        foreach (var item in response)
+        var stopwatch = Stopwatch.StartNew();
+        var baseTags = new TagList
         {
-            embeddings.Add(item.Vector.ToArray());
-        }
+            { "deployment", _options.AzureOpenAI.EmbeddingDeployment }
+        };
 
-        if (embeddings.Count != inputs.Count)
+        try
         {
-            _logger.LogWarning("Embedding count {EmbeddingCount} does not match input count {InputCount}", embeddings.Count, inputs.Count);
-        }
+            var response = await _embeddingGenerator.GenerateAsync(
+                inputs,
+                _embeddingOptions,
+                cancellationToken);
 
-        return embeddings;
+            var embeddings = new List<float[]>(response.Count);
+
+            foreach (var item in response)
+            {
+                embeddings.Add(item.Vector.ToArray());
+            }
+
+            stopwatch.Stop();
+            var successTags = baseTags;
+            successTags.Add("status", "success");
+
+            activity?.SetTag("ingestion.embedding.outputCount", embeddings.Count);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            IngestionTelemetry.EmbeddingGenerationSeconds.Record(stopwatch.Elapsed.TotalSeconds, successTags);
+            IngestionTelemetry.EmbeddingsGenerated.Add(embeddings.Count, successTags);
+
+            if (embeddings.Count != inputs.Count)
+            {
+                _logger.LogWarning("Embedding count {EmbeddingCount} does not match input count {InputCount}", embeddings.Count, inputs.Count);
+            }
+
+            return embeddings;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            var failureTags = baseTags;
+            failureTags.Add("status", "failed");
+
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+
+            IngestionTelemetry.EmbeddingGenerationSeconds.Record(stopwatch.Elapsed.TotalSeconds, failureTags);
+
+            _logger.LogError(ex, "Failed to generate embeddings using deployment {Deployment}", _options.AzureOpenAI.EmbeddingDeployment);
+            throw;
+        }
     }
 }

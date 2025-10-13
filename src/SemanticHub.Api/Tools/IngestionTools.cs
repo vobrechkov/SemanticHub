@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using SemanticHub.Api.Models;
 using SemanticHub.Api.Services;
 
@@ -95,6 +93,54 @@ public class IngestionTools(
         {
             logger.LogError(ex, "Failed to ingest web page {Url}", url);
             return $"Error ingesting web page: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Ingest an OpenAPI specification into the knowledge base.
+    /// </summary>
+    [Description("Parse an OpenAPI specification (YAML or JSON) and ingest all endpoints into the knowledge base. Each endpoint becomes a searchable document.")]
+    public async Task<string> IngestOpenApiSpecAsync(
+        [Description("URL or file path to the OpenAPI specification. Can be a URL (http/https) or local file path.")] string specSource,
+        [Description("Optional document ID prefix. Each endpoint will get its own document with this prefix.")] string? documentIdPrefix = null,
+        [Description("Optional tags to apply to all endpoints from this spec.")] List<string>? tags = null,
+        [Description("Optional metadata to attach to all endpoints from this spec.")] Dictionary<string, object>? metadata = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(specSource))
+        {
+            return "Spec source must not be empty.";
+        }
+
+        try
+        {
+            var request = new OpenApiIngestionRequest
+            {
+                SpecSource = specSource,
+                DocumentIdPrefix = string.IsNullOrWhiteSpace(documentIdPrefix) ? null : documentIdPrefix,
+                Tags = tags?.Where(t => !string.IsNullOrWhiteSpace(t))
+                    .Select(t => t.Trim())
+                    .Where(t => t.Length > 0)
+                    .ToList(),
+                Metadata = metadata
+            };
+
+            var response = await ingestionClient.IngestOpenApiAsync(request, cancellationToken);
+            if (response.Success)
+            {
+                return $"OpenAPI spec from '{response.SpecSource}' ingested successfully: {response.EndpointsProcessed} of {response.TotalEndpoints} endpoints processed with {response.TotalChunksIndexed} total chunk(s).";
+            }
+
+            var errorDetails = response.Errors?.Any() == true
+                ? $" Errors: {string.Join("; ", response.Errors)}"
+                : string.Empty;
+
+            return $"Failed to ingest OpenAPI spec: {response.ErrorMessage ?? response.Message ?? "unknown error"}{errorDetails}";
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to ingest OpenAPI spec from {SpecSource}", specSource);
+            return $"Error ingesting OpenAPI spec: {ex.Message}";
         }
     }
 }

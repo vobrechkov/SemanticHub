@@ -56,7 +56,10 @@ public class KnowledgeIngestionWorkflow(
                           You are a document indexer. Your job is to:
                           1. Take extracted content and break it into appropriate chunks
                           2. Generate meaningful summaries for each chunk
-                          3. Call the ingestion tool to store content in the Azure AI Search backed knowledge base
+                          3. Call the appropriate ingestion tool based on content type:
+                             - For OpenAPI specifications (YAML/JSON): use IngestOpenApiSpecAsync
+                             - For Markdown content: use IngestMarkdownDocumentAsync
+                             - For web pages: use IngestWebPageAsync
                           4. Track the document ID and storage status
                           5. Output: 'INDEXED: <document-id>' with confirmation
                           """,
@@ -64,6 +67,8 @@ public class KnowledgeIngestionWorkflow(
             tools:
             [
                 AIFunctionFactory.Create(ingestionTools.IngestMarkdownDocumentAsync),
+                AIFunctionFactory.Create(ingestionTools.IngestWebPageAsync),
+                AIFunctionFactory.Create(ingestionTools.IngestOpenApiSpecAsync),
                 AIFunctionFactory.Create(knowledgeBaseTools.GetDocumentStatus),
                 AIFunctionFactory.Create(knowledgeBaseTools.ListDocuments)
             ]

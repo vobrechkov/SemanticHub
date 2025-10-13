@@ -1,5 +1,3 @@
-using Aspire.Hosting;
-using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
 using Azure.Core;
 using Azure.Provisioning.CognitiveServices;
@@ -74,6 +72,7 @@ if (enableAzureSearch && search is not null)
     ingestion = builder.AddProject<Projects.SemanticHub_IngestionService>("ingestion")
         .WithReference(openai).WaitFor(openai)
         .WithReference(search).WaitFor(search)
+        .WithReference(blobs).WaitFor(storage)
         .WithEnvironment("Ingestion__AzureOpenAI__EmbeddingDeployment", embeddingDeployment.Resource.Name);
 }
 

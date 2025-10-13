@@ -2,7 +2,7 @@ namespace SemanticHub.IngestionService.Configuration;
 
 public static class ConfigurationExtensions
 {
-    public static void ConfigureFromAspireServiceDiscovery(this IngestionOptions options, IConfiguration configuration)
+    public static void ConfigureFromServiceDiscovery(this IngestionOptions options, IConfiguration configuration)
     {
         var openAiEndpoint = configuration.GetConnectionStringSetting("openai", "Endpoint");
         if (!string.IsNullOrEmpty(openAiEndpoint))

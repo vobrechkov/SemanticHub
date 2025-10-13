@@ -12,6 +12,20 @@ public class IngestionOptions
     public AzureSearchOptions AzureSearch { get; set; } = new();
 
     public ChunkingOptions Chunking { get; set; } = new();
+
+    public AzureBlobStorageOptions BlobStorage { get; set; } = new();
+}
+
+/// <summary>
+/// Azure Blob Storage configuration for reading files.
+/// </summary>
+public class AzureBlobStorageOptions
+{
+    public string Endpoint { get; set; } = string.Empty;
+
+    public string DefaultContainer { get; set; } = "documents";
+
+    public string? ConnectionString { get; set; }
 }
 
 /// <summary>

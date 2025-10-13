@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
@@ -6,6 +7,7 @@ using SemanticHub.IngestionService.Models;
 using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using SemanticHub.IngestionService.Diagnostics;
 
 namespace SemanticHub.IngestionService.Tools;
 
@@ -25,6 +27,9 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
         string specSource,
         CancellationToken cancellationToken = default)
     {
+        using var activity = IngestionTelemetry.ActivitySource.StartActivity("ParseOpenApiSpec");
+        activity?.SetTag("ingestion.openapi.specSource", specSource);
+
         logger.LogInformation("Parsing OpenAPI spec from: {Source}", specSource);
 
         OpenApiDocument openApiDoc;
@@ -63,12 +68,16 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             logger.LogError(ex, "Failed to parse OpenAPI spec from: {Source}", specSource);
             throw;
         }
 
         // Extract endpoints
         var endpoints = ExtractEndpoints(openApiDoc, specSource);
+
+        activity?.SetTag("ingestion.openapi.endpointCount", endpoints.Count);
+        activity?.SetStatus(ActivityStatusCode.Ok);
 
         logger.LogInformation("Successfully parsed {Count} endpoints from OpenAPI spec", endpoints.Count);
         return endpoints;
@@ -336,6 +345,9 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
     /// </summary>
     public List<string> ConvertEndpointsToMarkdown(List<OpenApiEndpoint> endpoints)
     {
+        using var activity = IngestionTelemetry.ActivitySource.StartActivity("ConvertOpenApiEndpoints");
+        activity?.SetTag("ingestion.openapi.endpointCount", endpoints.Count);
+
         logger.LogInformation("Converting {Count} endpoints to Markdown", endpoints.Count);
 
         var markdownDocs = new List<string>();
@@ -345,6 +357,11 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
             {
                 var markdown = ConvertEndpointToMarkdown(endpoint);
                 markdownDocs.Add(markdown);
+                activity?.AddEvent(new ActivityEvent("EndpointConverted", tags: new ActivityTagsCollection
+                {
+                    { "method", endpoint.Method },
+                    { "path", endpoint.Path }
+                }));
             }
             catch (Exception ex)
             {
@@ -353,6 +370,7 @@ public class OpenApiIngestionTool(ILogger<OpenApiIngestionTool> logger)
             }
         }
 
+        activity?.SetStatus(ActivityStatusCode.Ok);
         return markdownDocs;
     }
 

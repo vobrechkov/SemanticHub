@@ -73,6 +73,33 @@ public class WebPageIngestionRequest
 }
 
 /// <summary>
+/// Request payload for ingesting OpenAPI specifications.
+/// </summary>
+public class OpenApiIngestionRequest
+{
+    /// <summary>
+    /// URL or file path to the OpenAPI specification (YAML or JSON)
+    /// </summary>
+    public required string SpecSource { get; set; }
+
+    /// <summary>
+    /// Optional base document ID prefix. Individual endpoints will be suffixed.
+    /// If omitted, generated from the spec info.
+    /// </summary>
+    public string? DocumentIdPrefix { get; set; }
+
+    /// <summary>
+    /// Optional tags to apply to all ingested endpoints
+    /// </summary>
+    public List<string>? Tags { get; set; }
+
+    /// <summary>
+    /// Additional metadata to attach to all ingested endpoints
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; set; }
+}
+
+/// <summary>
 /// Response from the ingestion service describing the outcome.
 /// </summary>
 public class IngestionResponse
@@ -96,6 +123,57 @@ public class IngestionResponse
     /// Number of semantic chunks created in the index.
     /// </summary>
     public int ChunksIndexed { get; set; }
+
+    /// <summary>
+    /// Error message when <see cref="Success"/> is false.
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Descriptive message about the operation outcome.
+    /// </summary>
+    public string? Message { get; set; }
+}
+
+/// <summary>
+/// Response from the ingestion service for OpenAPI spec ingestion.
+/// </summary>
+public class OpenApiIngestionResponse
+{
+    /// <summary>
+    /// Whether the ingestion operation succeeded.
+    /// </summary>
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// Source of the OpenAPI specification.
+    /// </summary>
+    public string SpecSource { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Number of endpoints successfully processed.
+    /// </summary>
+    public int EndpointsProcessed { get; set; }
+
+    /// <summary>
+    /// Total number of endpoints found in the spec.
+    /// </summary>
+    public int TotalEndpoints { get; set; }
+
+    /// <summary>
+    /// Total number of semantic chunks created across all endpoints.
+    /// </summary>
+    public int TotalChunksIndexed { get; set; }
+
+    /// <summary>
+    /// Descriptive message about the operation outcome.
+    /// </summary>
+    public string? Message { get; set; }
+
+    /// <summary>
+    /// List of errors encountered during processing.
+    /// </summary>
+    public List<string>? Errors { get; set; }
 
     /// <summary>
     /// Error message when <see cref="Success"/> is false.

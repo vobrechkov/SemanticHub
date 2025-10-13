@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Azure;
 using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
 using SemanticHub.IngestionService.Configuration;
+using SemanticHub.IngestionService.Diagnostics;
 
 namespace SemanticHub.IngestionService.Services;
 
@@ -19,8 +21,12 @@ public class SearchIndexInitializer(
 
     public async Task EnsureInitializedAsync(CancellationToken cancellationToken = default)
     {
+        using var activity = IngestionTelemetry.ActivitySource.StartActivity("EnsureSearchIndex");
+        activity?.SetTag("ingestion.index", options.AzureSearch.IndexName);
+
         if (_initialized)
         {
+            activity?.SetStatus(ActivityStatusCode.Ok);
             return;
         }
 
@@ -29,12 +35,14 @@ public class SearchIndexInitializer(
         {
             if (_initialized)
             {
+                activity?.SetStatus(ActivityStatusCode.Ok);
                 return;
             }
 
             if (await IndexExistsAsync(cancellationToken))
             {
                 _initialized = true;
+                 activity?.SetStatus(ActivityStatusCode.Ok);
                 return;
             }
 
@@ -44,6 +52,8 @@ public class SearchIndexInitializer(
 
             _initialized = true;
             logger.LogInformation("Azure AI Search index '{IndexName}' created", options.AzureSearch.IndexName);
+            activity?.AddEvent(new ActivityEvent("IndexCreated"));
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         finally
         {

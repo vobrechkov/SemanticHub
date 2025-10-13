@@ -1,8 +1,6 @@
-using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
 using OpenSearch.Client;
 using SemanticHub.Api.Configuration;
 using SemanticHub.Api.Memory;

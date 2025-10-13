@@ -4,3 +4,16 @@ GET {{SemanticHub.Api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+### Test Ingestion Workflow with OpenAPI Spec
+POST {{SemanticHub.Api_HostAddress}}/api/workflows/ingest
+Content-Type: application/json
+
+{
+  "userId": "test-user",
+  "parameters": {
+    "document": "/Users/vesselin/Source/GitHub/SemanticKernelMemoryRAG/docs/wealthcare-participant-integration-rest-api-29.0.yaml"
+  }
+}
+
+###

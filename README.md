@@ -110,7 +110,50 @@ This starts all services via Aspire with automatic resource provisioning and ser
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/ingestion/markdown` | POST | Ingest Markdown documents with YAML frontmatter |
+| `/ingestion/webpage` | POST | Scrape and ingest web page content |
+| `/ingestion/openapi` | POST | Parse and ingest OpenAPI specifications (YAML/JSON) |
 | `/health` | GET | Health check endpoint |
+
+### Ingesting Documents
+
+**Markdown Documents:**
+```bash
+curl -X POST https://localhost:<port>/ingestion/markdown \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Getting Started Guide",
+    "content": "# Introduction\n\nThis is a sample document...",
+    "tags": ["guide", "documentation"]
+  }'
+```
+
+**Web Pages:**
+```bash
+curl -X POST https://localhost:<port>/ingestion/webpage \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/article",
+    "tags": ["article", "web"]
+  }'
+```
+
+**OpenAPI Specifications:**
+```bash
+curl -X POST https://localhost:<port>/ingestion/openapi \
+  -H "Content-Type: application/json" \
+  -d '{
+    "specSource": "/path/to/openapi.yaml",
+    "documentIdPrefix": "my-api",
+    "tags": ["api", "specification"]
+  }'
+```
+
+The OpenAPI ingestion:
+- Parses OpenAPI 3.x specifications (YAML or JSON)
+- Converts each endpoint to structured Markdown with YAML frontmatter
+- Extracts parameters, request/response schemas, and examples
+- Creates searchable documents for each API endpoint
+- Supports both local file paths and remote URLs
 
 ## Configuration
 
