@@ -9,7 +9,7 @@ namespace SemanticHub.Api.Tools;
 /// </summary>
 public class KnowledgeBaseTools(
     ILogger<KnowledgeBaseTools> logger,
-    IAzureSearchKnowledgeStore knowledgeStore,
+    IKnowledgeStore knowledgeStore,
     AgentFrameworkOptions options)
 {
 
@@ -25,10 +25,10 @@ public class KnowledgeBaseTools(
     {
         try
         {
-            var effectiveLimit = limit > 0 ? limit : options.Memory.AzureSearch.MaxResults;
-            var effectiveMinRelevance = minRelevance > 0 ? minRelevance : options.Memory.AzureSearch.MinRelevance;
+            var effectiveLimit = limit > 0 ? limit : options.Memory.MaxResults;
+            var effectiveMinRelevance = minRelevance > 0 ? minRelevance : options.Memory.MinRelevance;
 
-            logger.LogInformation("Searching Azure AI Search index with query: {Query}", query);
+            logger.LogInformation("Searching knowledge store with query: {Query}", query);
 
             var results = await knowledgeStore.SearchAsync(
                 query,
@@ -77,7 +77,7 @@ public class KnowledgeBaseTools(
     {
         try
         {
-            logger.LogInformation("Checking Azure AI Search for document: {DocumentId}", documentId);
+            logger.LogInformation("Checking knowledge store for document: {DocumentId}", documentId);
 
             var document = await knowledgeStore.TryGetDocumentAsync(documentId, cancellationToken);
 
@@ -117,8 +117,8 @@ public class KnowledgeBaseTools(
     {
         try
         {
-            var effectiveLimit = limit > 0 ? limit : options.Memory.AzureSearch.MaxResults;
-            logger.LogInformation("Listing up to {Limit} documents from Azure AI Search", effectiveLimit);
+            var effectiveLimit = limit > 0 ? limit : options.Memory.MaxResults;
+            logger.LogInformation("Listing up to {Limit} documents from knowledge store", effectiveLimit);
 
             var documents = await knowledgeStore.ListDocumentsAsync(effectiveLimit, cancellationToken);
 
@@ -144,7 +144,7 @@ public class KnowledgeBaseTools(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error listing documents from Azure AI Search");
+            logger.LogError(ex, "Error listing documents from knowledge store");
             return $"Error listing documents: {ex.Message}";
         }
     }

@@ -15,7 +15,7 @@ public class WorkflowConfigurationTests
 {
     private static KnowledgeBaseTools CreateKnowledgeBaseTools()
     {
-        var knowledgeStore = new Mock<IAzureSearchKnowledgeStore>();
+        var knowledgeStore = new Mock<IKnowledgeStore>();
         var logger = new Mock<ILogger<KnowledgeBaseTools>>();
         var options = new AgentFrameworkOptions();
 

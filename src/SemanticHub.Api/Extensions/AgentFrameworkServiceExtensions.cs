@@ -3,6 +3,7 @@ using Azure.Search.Documents.Indexes;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using OpenSearch.Client;
 using SemanticHub.Api.Configuration;
 using SemanticHub.Api.Memory;
 using SemanticHub.Api.Services;
@@ -37,19 +38,53 @@ public static class AgentFrameworkServiceExtensions
             return factory.CreateChatClient();
         });
 
-        // Azure AI Search retrieval plumbing
-        if (!string.IsNullOrEmpty(options.Memory.AzureSearch.IndexName))
+        switch (options.Memory.Provider)
         {
-            services.AddSingleton(sp =>
-            {
-                var indexClient = sp.GetRequiredService<SearchIndexClient>();
-                return indexClient.GetSearchClient(options.Memory.AzureSearch.IndexName);
-            });
+            case MemoryProvider.AzureSearch:
+                if (string.IsNullOrEmpty(options.Memory.AzureSearch.IndexName))
+                {
+                    throw new InvalidOperationException("AgentFramework:Memory:AzureSearch:IndexName must be configured when using AzureSearch provider.");
+                }
 
-            services.AddSingleton<IAzureSearchKnowledgeStore, AzureSearchKnowledgeStore>();
-            services.AddSingleton<AIContextProvider, AzureSearchContextProvider>();
+                services.AddSingleton(sp =>
+                {
+                    var indexClient = sp.GetRequiredService<SearchIndexClient>();
+                    return indexClient.GetSearchClient(options.Memory.AzureSearch.IndexName);
+                });
+
+                services.AddSingleton<IKnowledgeStore, AzureSearchKnowledgeStore>();
+                break;
+
+            case MemoryProvider.OpenSearch:
+                services.AddSingleton<IOpenSearchClient>(_ =>
+                {
+                    var settings = new ConnectionSettings(new Uri(options.Memory.OpenSearch.Endpoint))
+                        .DefaultIndex(options.Memory.OpenSearch.IndexName);
+
+                    if (!string.IsNullOrEmpty(options.Memory.OpenSearch.Username) &&
+                        !string.IsNullOrEmpty(options.Memory.OpenSearch.Password))
+                    {
+                        settings = settings.BasicAuthentication(
+                            options.Memory.OpenSearch.Username,
+                            options.Memory.OpenSearch.Password);
+                    }
+
+                    if (options.Memory.OpenSearch.AcceptAllCertificates)
+                    {
+                        settings = settings.ServerCertificateValidationCallback((_, _, _, _) => true);
+                    }
+
+                    return new OpenSearchClient(settings);
+                });
+
+                services.AddSingleton<IKnowledgeStore, OpenSearchKnowledgeStore>();
+                break;
+
+            default:
+                throw new NotSupportedException($"Memory provider '{options.Memory.Provider}' is not supported.");
         }
 
+        services.AddSingleton<AIContextProvider, KnowledgeStoreContextProvider>();
         services.AddSingleton<KnowledgeBaseTools>();
         services.AddSingleton<AgentService>();
 

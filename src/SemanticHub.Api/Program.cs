@@ -12,7 +12,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Add Aspire service defaults (health checks, service discovery, telemetry)
 builder.AddServiceDefaults();
 var openAiClientBuilder = builder.AddAzureOpenAIClient("openai");
-builder.AddAzureSearchClient("search");
 
 // Add OpenAPI/Swagger
 builder.Services.AddOpenApi("v1", options => options
@@ -30,6 +29,11 @@ var agentOptions = builder.Configuration.GetSection(AgentFrameworkOptions.Sectio
     ?? new AgentFrameworkOptions();
 
 agentOptions.ConfigureFromServiceDiscovery(builder.Configuration);
+if (agentOptions.Memory.Provider == MemoryProvider.AzureSearch)
+{
+    builder.AddAzureSearchClient("search");
+}
+
 if (string.IsNullOrWhiteSpace(agentOptions.AzureOpenAI.EmbeddingDeployment))
 {
     throw new InvalidOperationException("AgentFramework:AzureOpenAI:EmbeddingDeployment must be configured.");

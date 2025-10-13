@@ -1,12 +1,13 @@
 # SemanticHub
 
-A sample application that demonstrates a Retrieval Augmented Generation (RAG) architecture for the Microsoft Agent Framework (MAF) using Azure AI Search as the memory store and Azure OpenAI for both chat and embeddings. The solution is orchestrated with .NET Aspire for repeatable local and cloud deployments.
+A sample application that demonstrates a Retrieval Augmented Generation (RAG) architecture for the Microsoft Agent Framework (MAF) using Azure AI Search (or an optional OpenSearch stack) as the memory store and Azure OpenAI for both chat and embeddings. The solution is orchestrated with .NET Aspire for repeatable local and cloud deployments.
 
 ## Overview
 
 The original version of this repository relied on Microsoft Kernel Memory as an external service. The current iteration replaces that dependency with a modern, MAF-aligned data plane built on:
 
-- **Azure AI Search** for hybrid + vector retrieval
+- **Azure AI Search** for hybrid + vector retrieval (managed)
+- **OpenSearch/Elasticsearch** for optional local-first hybrid + vector retrieval
 - **Azure OpenAI** for chat completions and embedding generation
 - **Azure-powered ingestion pipeline** implemented in .NET for chunking, embedding, and indexing content
 
@@ -14,7 +15,7 @@ The original version of this repository relied on Microsoft Kernel Memory as an 
 
 The solution consists of the following projects:
 
-- **SemanticHub.AppHost** – .NET Aspire AppHost responsible for provisioning Azure resources (Azure AI Search, Azure OpenAI) and wiring up service discovery.
+- **SemanticHub.AppHost** – .NET Aspire AppHost responsible for provisioning Azure resources (Azure AI Search, Azure OpenAI) or an OpenSearch container, and wiring up service discovery.
 - **SemanticHub.Api** – The main REST API hosting Microsoft Agent Framework agents, knowledge tools, and multi-agent workflows.
 - **SemanticHub.IngestionService** – Service responsible for ingesting Markdown and other sources, generating embeddings with Azure OpenAI, and indexing content into Azure AI Search.
 - **SemanticHub.Web** – Blazor Server application (legacy UI kept for reference).
@@ -37,15 +38,17 @@ The Aspire AppHost provisions Azure resources and orchestrates the services in t
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - [Node.js 20+](https://nodejs.org/) (only required for the `SemanticHub.WebApp` Next.js frontend)
 - Azure subscription with permissions to provision:
-  - Azure AI Search (Free SKU is sufficient for local development)
+  - Azure AI Search (when targeting the managed service)
   - Azure OpenAI (chat + embeddings deployments)
+- Optional: Docker (for the OpenSearch container the AppHost starts in local development)
 - Optional: Redis (if you want to enable output caching in the Blazor UI)
 
 ## Local Development Setup
 
-1. **Configure Azure resource names** – Edit `src/SemanticHub.AppHost/AppHost.cs` if you want to change the default resource names for Azure AI Search and Azure OpenAI (the sample uses `semhub-eus-dev-*`).
-2. **Provide Azure credentials** – Use `dotnet user-secrets` (recommended) or environment variables to provide Azure OpenAI API keys during local development. Aspire service discovery will inject these values into the services.
-3. **Optional Redis** – If you want to enable the Blazor UI output cache, ensure a Redis instance is available; Aspire can provision a container automatically when you run the AppHost.
+1. **Choose a memory provider** – Set `AgentFramework__Memory__Provider` to `OpenSearch` (default in development) or `AzureSearch`. The AppHost also exposes `Features__OpenSearch__Enabled` and `Features__AzureSearch__Enabled` toggles if you want to disable either backend.
+2. **Configure Azure resource names** – Edit `src/SemanticHub.AppHost/AppHost.cs` if you want to change the default resource names for Azure AI Search and Azure OpenAI (the sample uses `semhub-eus-dev-*`).
+3. **Provide Azure credentials** – Use `dotnet user-secrets` (recommended) or environment variables to provide Azure OpenAI API keys during local development. Aspire service discovery will inject these values into the services.
+4. **Optional Redis** – If you want to enable the Blazor UI output cache, ensure a Redis instance is available; Aspire can provision a container automatically when you run the AppHost.
 
 ## Getting Started
 
@@ -65,9 +68,9 @@ dotnet run --project src/SemanticHub.AppHost
 ```
 
 This will start all services with proper dependency management:
-1. Azure AI Search (provisioned via Azure resource manager)
+1. Azure AI Search (when enabled) or a local OpenSearch container
 2. Azure OpenAI (chat + embeddings deployments)
-3. SemanticHub.IngestionService (document ingestion + indexing)
+3. SemanticHub.IngestionService (document ingestion + indexing – currently targets Azure AI Search)
 4. SemanticHub.Api (agent endpoints and workflows)
 5. SemanticHub.WebApp (Next.js frontend)
 
@@ -114,7 +117,9 @@ The solution uses environment-specific configuration files:
 
 - `AzureOpenAI` – endpoint, chat deployment, embedding deployment, optional API key.
 - `DefaultAgent` – default name/instructions/model when the caller does not supply overrides.
-- `Memory.AzureSearch` – index name, field mapping (key/content/title/summary/vector), semantic configuration name, k-nearest-neighbour setting, and thresholds for relevance.
+- `Memory` – provider selection plus global limits for knowledge base queries.
+- `Memory.AzureSearch` – index name, field mapping (key/content/title/summary/vector), and semantic/vector configuration.
+- `Memory.OpenSearch` – endpoint, index name, field mapping, vector field, optional credentials, and TLS settings for the local container.
 
 ### Ingestion Service Configuration
 
@@ -181,7 +186,7 @@ If you encounter build errors:
 ## Architecture Notes
 
 - Uses .NET Aspire for service orchestration, provisioning, and health checks.
-- Azure AI Search hosts the knowledge index (semantic + vector search).
+- Azure AI Search hosts the knowledge index (semantic + vector search) in cloud environments, while OpenSearch/Elasticsearch can back the index locally.
 - Azure OpenAI supplies chat and embedding deployments used by both the agent and ingestion pipeline.
 - Redis (optional) provides output caching for the Blazor UI.
 - The Web project uses Blazor Server; the WebApp uses Next.js.

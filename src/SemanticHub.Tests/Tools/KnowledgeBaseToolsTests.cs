@@ -12,7 +12,7 @@ namespace SemanticHub.Tests.Tools;
 public class KnowledgeBaseToolsTests
 {
     private readonly AgentFrameworkOptions _options;
-    private readonly Mock<IAzureSearchKnowledgeStore> _mockKnowledgeStore;
+    private readonly Mock<IKnowledgeStore> _mockKnowledgeStore;
     private readonly Mock<ILogger<KnowledgeBaseTools>> _mockLogger;
 
     public KnowledgeBaseToolsTests()
@@ -21,15 +21,12 @@ public class KnowledgeBaseToolsTests
         {
             Memory =
             {
-                AzureSearch =
-                {
-                    MaxResults = 5,
-                    MinRelevance = 0.6
-                }
+                MaxResults = 5,
+                MinRelevance = 0.6
             }
         };
 
-        _mockKnowledgeStore = new Mock<IAzureSearchKnowledgeStore>();
+        _mockKnowledgeStore = new Mock<IKnowledgeStore>();
         _mockLogger = new Mock<ILogger<KnowledgeBaseTools>>();
     }
 

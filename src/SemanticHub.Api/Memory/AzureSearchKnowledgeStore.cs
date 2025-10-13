@@ -9,41 +9,6 @@ using System.Linq;
 namespace SemanticHub.Api.Memory;
 
 /// <summary>
-/// Represents an indexed document within Azure AI Search.
-/// </summary>
-public sealed record KnowledgeDocument(string DocumentId, string? Title, string? Summary);
-
-/// <summary>
-/// Represents a search hit returned from Azure AI Search.
-/// </summary>
-public sealed record KnowledgeRecord(
-    KnowledgeDocument Document,
-    string Content,
-    double Score,
-    double NormalizedScore,
-    IReadOnlyDictionary<string, object?> Metadata);
-
-/// <summary>
-/// Abstraction over Azure AI Search operations used by the agent tooling.
-/// </summary>
-public interface IAzureSearchKnowledgeStore
-{
-    Task<IReadOnlyList<KnowledgeRecord>> SearchAsync(
-        string query,
-        int limit,
-        double minRelevance,
-        CancellationToken cancellationToken = default);
-
-    Task<KnowledgeDocument?> TryGetDocumentAsync(
-        string documentId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<KnowledgeDocument>> ListDocumentsAsync(
-        int limit,
-        CancellationToken cancellationToken = default);
-}
-
-/// <summary>
 /// Azure AI Search backed implementation used for Retrieval Augmented Generation flows.
 /// Supports hybrid (vector + semantic) search for high quality grounding.
 /// </summary>
@@ -52,7 +17,7 @@ public sealed class AzureSearchKnowledgeStore(
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     AgentFrameworkOptions options,
     ILogger<AzureSearchKnowledgeStore> logger)
-    : IAzureSearchKnowledgeStore
+    : IKnowledgeStore
 {
     private readonly SearchClient _searchClient = searchClient;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator = embeddingGenerator;
@@ -101,40 +66,61 @@ public sealed class AzureSearchKnowledgeStore(
             return [];
         }
 
+        return BuildKnowledgeRecords(results, effectiveMinRelevance);
+    }
+
+    private IReadOnlyList<KnowledgeRecord> BuildKnowledgeRecords(
+        List<SearchResult<SearchDocument>> results,
+        double minRelevance)
+    {
         var maxScore = results.Max(r => r.Score ?? 0d);
         var normalizedResults = new List<KnowledgeRecord>(results.Count);
 
         foreach (var result in results)
         {
-            var normalizedScore = maxScore > 0 ? (result.Score ?? 0d) / maxScore : 0d;
-            if (normalizedScore < effectiveMinRelevance)
+            var record = TryCreateKnowledgeRecord(result, maxScore, minRelevance);
+            if (record != null)
             {
-                continue;
+                normalizedResults.Add(record);
             }
-
-            var documentId = ResolveDocumentId(result.Document);
-            if (string.IsNullOrEmpty(documentId))
-            {
-                _logger.LogWarning("Search result missing document identifier (key='{KeyField}', parent='{ParentField}')", _keyField, _parentDocumentField);
-                continue;
-            }
-
-            var content = GetFieldAsString(result.Document, _contentField) ?? string.Empty;
-            var title = _titleField != null ? GetFieldAsString(result.Document, _titleField) : null;
-            var summary = _summaryField != null ? GetFieldAsString(result.Document, _summaryField) : null;
-
-            var metadata = ExtractMetadata(result.Document);
-
-            normalizedResults.Add(new KnowledgeRecord(
-                new KnowledgeDocument(documentId, title, summary),
-                content,
-                result.Score ?? 0d,
-                normalizedScore,
-                metadata));
         }
 
         return normalizedResults;
     }
+
+    private KnowledgeRecord? TryCreateKnowledgeRecord(
+        SearchResult<SearchDocument> result,
+        double maxScore,
+        double minRelevance)
+    {
+        var normalizedScore = maxScore > 0 ? (result.Score ?? 0d) / maxScore : 0d;
+        if (normalizedScore < minRelevance)
+        {
+            return null;
+        }
+
+        var documentId = ResolveDocumentId(result.Document);
+        if (string.IsNullOrEmpty(documentId))
+        {
+            _logger.LogWarning("Search result missing document identifier (key='{KeyField}', parent='{ParentField}')", _keyField, _parentDocumentField);
+            return null;
+        }
+
+        var content = GetFieldAsString(result.Document, _contentField) ?? string.Empty;
+        var title = ResolveOptionalField(result.Document, _titleField);
+        var summary = ResolveOptionalField(result.Document, _summaryField);
+        var metadata = ExtractMetadata(result.Document);
+
+        return new KnowledgeRecord(
+            new KnowledgeDocument(documentId, title, summary),
+            content,
+            result.Score ?? 0d,
+            normalizedScore,
+            metadata);
+    }
+
+    private static string? ResolveOptionalField(SearchDocument document, string? fieldName)
+        => fieldName != null ? GetFieldAsString(document, fieldName) : null;
 
     public async Task<KnowledgeDocument?> TryGetDocumentAsync(
         string documentId,
@@ -285,6 +271,16 @@ public sealed class AzureSearchKnowledgeStore(
     {
         var metadata = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
+        AddChunkMetadata(document, metadata);
+        AddParentDocumentMetadata(document, metadata);
+        AddStandardFields(document, metadata);
+        MergeCustomMetadata(document, metadata);
+
+        return metadata;
+    }
+
+    private void AddChunkMetadata(SearchDocument document, Dictionary<string, object?> metadata)
+    {
         if (!string.IsNullOrEmpty(_chunkTitleField))
         {
             var chunkTitle = GetFieldAsString(document, _chunkTitleField);
@@ -302,13 +298,19 @@ public sealed class AzureSearchKnowledgeStore(
                 metadata["chunkIndex"] = chunkIndexValue;
             }
         }
+    }
 
+    private void AddParentDocumentMetadata(SearchDocument document, Dictionary<string, object?> metadata)
+    {
         var parentId = GetFieldAsString(document, _parentDocumentField);
         if (!string.IsNullOrEmpty(parentId))
         {
             metadata["parentDocumentId"] = parentId;
         }
+    }
 
+    private static void AddStandardFields(SearchDocument document, Dictionary<string, object?> metadata)
+    {
         if (document.TryGetValue("sourceUrl", out var sourceUrl) && sourceUrl is not null)
         {
             metadata["sourceUrl"] = sourceUrl;
@@ -328,31 +330,36 @@ public sealed class AzureSearchKnowledgeStore(
         {
             metadata["tags"] = tagCollection.Where(t => t is not null).Select(t => t.ToString()).ToArray();
         }
+    }
 
-        if (!string.IsNullOrEmpty(_metadataField))
+    private void MergeCustomMetadata(SearchDocument document, Dictionary<string, object?> metadata)
+    {
+        if (string.IsNullOrEmpty(_metadataField))
         {
-            var metadataJson = GetFieldAsString(document, _metadataField);
-            if (!string.IsNullOrWhiteSpace(metadataJson))
+            return;
+        }
+
+        var metadataJson = GetFieldAsString(document, _metadataField);
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return;
+        }
+
+        try
+        {
+            var dictionary = JsonSerializer.Deserialize<Dictionary<string, object?>>(metadataJson);
+            if (dictionary != null)
             {
-                try
+                foreach (var kvp in dictionary)
                 {
-                    var dictionary = JsonSerializer.Deserialize<Dictionary<string, object?>>(metadataJson);
-                    if (dictionary != null)
-                    {
-                        foreach (var kvp in dictionary)
-                        {
-                            metadata[kvp.Key] = kvp.Value;
-                        }
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogDebug(ex, "Failed to parse metadata JSON from field '{MetadataField}'", _metadataField);
+                    metadata[kvp.Key] = kvp.Value;
                 }
             }
         }
-
-        return metadata;
+        catch (JsonException ex)
+        {
+            _logger.LogDebug(ex, "Failed to parse metadata JSON from field '{MetadataField}'", _metadataField);
+        }
     }
 
     private string? ResolveDocumentId(SearchDocument document)

@@ -5,16 +5,16 @@ using SemanticHub.Api.Configuration;
 namespace SemanticHub.Api.Memory;
 
 /// <summary>
-/// Injects Azure AI Search grounding context prior to agent invocation.
+/// Injects knowledge store grounding context prior to agent invocation.
 /// </summary>
-public sealed class AzureSearchContextProvider(
-    ILogger<AzureSearchContextProvider> logger,
-    IAzureSearchKnowledgeStore knowledgeStore,
+public sealed class KnowledgeStoreContextProvider(
+    ILogger<KnowledgeStoreContextProvider> logger,
+    IKnowledgeStore knowledgeStore,
     AgentFrameworkOptions options)
     : AIContextProvider
 {
-    private readonly ILogger<AzureSearchContextProvider> _logger = logger;
-    private readonly IAzureSearchKnowledgeStore _knowledgeStore = knowledgeStore;
+    private readonly ILogger<KnowledgeStoreContextProvider> _logger = logger;
+    private readonly IKnowledgeStore _knowledgeStore = knowledgeStore;
     private readonly AgentFrameworkOptions _options = options;
 
     public override async ValueTask<AIContext> InvokingAsync(
@@ -27,12 +27,12 @@ public sealed class AzureSearchContextProvider(
             return new AIContext();
         }
 
-        var maxResults = _options.Memory.AzureSearch.MaxResults;
-        var minRelevance = _options.Memory.AzureSearch.MinRelevance;
+        var maxResults = _options.Memory.MaxResults;
+        var minRelevance = _options.Memory.MinRelevance;
 
         try
         {
-            _logger.LogDebug("Retrieving Azure AI Search grounding context for query: {Query}", latestMessage);
+            _logger.LogDebug("Retrieving knowledge store grounding context for query: {Query}", latestMessage);
 
             var results = await _knowledgeStore.SearchAsync(
                 latestMessage,
@@ -69,7 +69,7 @@ public sealed class AzureSearchContextProvider(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve context from Azure AI Search");
+            _logger.LogError(ex, "Failed to retrieve context from knowledge store");
             return new AIContext();
         }
     }
