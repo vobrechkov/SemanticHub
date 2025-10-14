@@ -32,6 +32,7 @@
 
     <!-- HTML to Markdown conversion -->
     <PackageReference Include="ReverseMarkdown" Version="4.*" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.*" />
 
     <!-- YAML processing for frontmatter -->
     <PackageReference Include="YamlDotNet" Version="16.*" />
@@ -41,6 +42,9 @@
 
     <!-- Observability and API Documentation -->
     <PackageReference Include="Scalar.AspNetCore" Version="2.8.11" />
+
+    <!-- Resilience -->
+    <PackageReference Include="Polly" Version="8.*" />
   </ItemGroup>
 
   <ItemGroup>

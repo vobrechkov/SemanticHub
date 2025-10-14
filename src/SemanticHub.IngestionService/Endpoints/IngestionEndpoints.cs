@@ -1,8 +1,12 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using System.Linq;
+using SemanticHub.IngestionService.Domain.Aggregates;
+using SemanticHub.IngestionService.Domain.Mappers;
+using SemanticHub.IngestionService.Domain.Results;
+using SemanticHub.IngestionService.Domain.Workflows;
 using SemanticHub.IngestionService.Models;
-using SemanticHub.IngestionService.Services;
-using Microsoft.AspNetCore.Http;
+using SemanticHub.IngestionService.Services.Processors;
 
 namespace SemanticHub.IngestionService.Endpoints;
 
@@ -45,7 +49,7 @@ public class IngestionEndpoints : IEndpoint
 
     private static async Task<IResult> HandleMarkdownIngestionAsync(
         MarkdownIngestionRequest request,
-        DocumentIngestionService ingestionService,
+        IIngestionWorkflow<MarkdownDocumentIngestion> workflow,
         CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.Content))
@@ -53,13 +57,13 @@ public class IngestionEndpoints : IEndpoint
             return Results.BadRequest(new { error = "Request content must not be empty." });
         }
 
-        var result = await ingestionService.IngestMarkdownAsync(request, cancellationToken);
-        return Results.Ok(MapResult(result));
+        var outcome = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
+        return Results.Ok(MapOutcome(outcome));
     }
 
     private static async Task<IResult> HandleWebPageIngestionAsync(
         WebPageIngestionRequest request,
-        DocumentIngestionService ingestionService,
+        IIngestionWorkflow<WebPageIngestion> workflow,
         CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.Url))
@@ -67,13 +71,13 @@ public class IngestionEndpoints : IEndpoint
             return Results.BadRequest(new { error = "Request URL must not be empty." });
         }
 
-        var result = await ingestionService.IngestWebPageAsync(request, cancellationToken);
-        return Results.Ok(MapResult(result));
+        var outcome = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
+        return Results.Ok(MapOutcome(outcome));
     }
 
     private static async Task<IResult> HandleOpenApiIngestionAsync(
         OpenApiIngestionRequest request,
-        DocumentIngestionService ingestionService,
+        IOpenApiProcessor openApiProcessor,
         CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.SpecSource))
@@ -81,7 +85,7 @@ public class IngestionEndpoints : IEndpoint
             return Results.BadRequest(new { error = "Request SpecSource must not be empty." });
         }
 
-        var result = await ingestionService.IngestOpenApiAsync(request, cancellationToken);
+        var result = await openApiProcessor.IngestAsync(request, cancellationToken);
 
         var response = new
         {
@@ -100,7 +104,7 @@ public class IngestionEndpoints : IEndpoint
 
     private static Task<IResult> HandleBlobIngestionAsync(
         BlobIngestionRequest request,
-        DocumentIngestionService ingestionService,
+        IIngestionWorkflow<BulkMarkdownIngestion, BlobIngestionResult> workflow,
         CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.BlobPath))
@@ -113,7 +117,7 @@ public class IngestionEndpoints : IEndpoint
         {
             try
             {
-                await ingestionService.IngestFromBlobAsync(request, cancellationToken);
+                await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
             }
             catch (Exception ex)
             {
@@ -134,7 +138,7 @@ public class IngestionEndpoints : IEndpoint
 
     private static async Task<IResult> HandleHtmlIngestionAsync(
         HtmlIngestionRequest request,
-        DocumentIngestionService ingestionService,
+        IIngestionWorkflow<HtmlDocumentIngestion> workflow,
         CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.Content))
@@ -142,8 +146,26 @@ public class IngestionEndpoints : IEndpoint
             return Results.BadRequest(new { error = "Request content must not be empty." });
         }
 
-        var result = await ingestionService.IngestHtmlAsync(request, cancellationToken);
-        return Results.Ok(MapResult(result));
+        var outcome = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
+        return Results.Ok(MapOutcome(outcome));
+    }
+
+    private static IngestionResponse MapOutcome(IngestionOutcome outcome)
+    {
+        if (outcome.LegacyResult is not null)
+        {
+            return MapResult(outcome.LegacyResult);
+        }
+
+        return new IngestionResponse
+        {
+            Success = outcome.Success,
+            DocumentId = outcome.Document?.DocumentId ?? string.Empty,
+            IndexName = outcome.Document?.IndexName,
+            ChunksIndexed = outcome.Document?.Metrics.ChunkCount ?? 0,
+            Message = outcome.Error?.Message,
+            ErrorMessage = outcome.Success ? null : outcome.Error?.Message
+        };
     }
 
     private static IngestionResponse MapResult(DocumentIngestionResult result) => new()

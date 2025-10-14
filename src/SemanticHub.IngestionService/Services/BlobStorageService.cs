@@ -1,13 +1,14 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using SemanticHub.IngestionService.Configuration;
+using SemanticHub.IngestionService.Domain.Ports;
 
 namespace SemanticHub.IngestionService.Services;
 
 /// <summary>
 /// Service for interacting with Azure Blob Storage
 /// </summary>
-public class BlobStorageService
+public class BlobStorageService : IBlobStorageService
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly IngestionOptions _options;

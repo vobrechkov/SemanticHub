@@ -2,13 +2,14 @@ using ReverseMarkdown;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using SemanticHub.IngestionService.Models;
+using SemanticHub.IngestionService.Domain.Ports;
 
 namespace SemanticHub.IngestionService.Services;
 
 /// <summary>
 /// Converts HTML to Markdown with YAML frontmatter
 /// </summary>
-public class MarkdownConverter
+public class MarkdownConverter : IMarkdownConverter
 {
     private readonly ILogger<MarkdownConverter> _logger;
     private readonly Converter _htmlToMarkdown;

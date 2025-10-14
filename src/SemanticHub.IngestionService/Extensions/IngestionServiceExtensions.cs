@@ -4,7 +4,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SemanticHub.IngestionService.Configuration;
+using SemanticHub.IngestionService.Application.Workflows;
+using SemanticHub.IngestionService.Domain.Aggregates;
+using SemanticHub.IngestionService.Domain.Ports;
+using SemanticHub.IngestionService.Domain.Results;
+using SemanticHub.IngestionService.Domain.Workflows;
 using SemanticHub.IngestionService.Services;
+using SemanticHub.IngestionService.Services.Processors;
+using SemanticHub.IngestionService.Services.Scraping;
 using SemanticHub.IngestionService.Tools;
 
 namespace SemanticHub.IngestionService.Extensions;
@@ -56,8 +63,8 @@ public static class IngestionServiceExtensions
         services.AddSingleton<SearchIndexInitializer>();
         services.AddSingleton<AzureOpenAIEmbeddingService>();
         services.AddSingleton<AzureSearchIndexer>();
-        services.AddSingleton<MarkdownConverter>();
-        services.AddSingleton<BlobStorageService>();
+        services.AddSingleton<IMarkdownConverter, MarkdownConverter>();
+        services.AddSingleton<IBlobStorageService, BlobStorageService>();
 
         services.AddSingleton(provider =>
         {
@@ -70,9 +77,16 @@ public static class IngestionServiceExtensions
                 options.Chunking.OverlapPercentage);
         });
 
-        services.AddSingleton<WebScraperTool>();
+        services.AddSingleton<IHtmlScraper, PlaywrightHtmlScraper>();
         services.AddSingleton<OpenApiIngestionTool>();
-        services.AddScoped<DocumentIngestionService>();
+        services.AddScoped<IMarkdownProcessor, MarkdownProcessor>();
+        services.AddScoped<IHtmlProcessor, HtmlProcessor>();
+        services.AddScoped<IOpenApiProcessor, OpenApiProcessor>();
+
+        services.AddScoped<IIngestionWorkflow<MarkdownDocumentIngestion>, MarkdownIngestionWorkflow>();
+        services.AddScoped<IIngestionWorkflow<HtmlDocumentIngestion>, HtmlIngestionWorkflow>();
+        services.AddScoped<IIngestionWorkflow<WebPageIngestion>, WebPageIngestionWorkflow>();
+        services.AddScoped<IIngestionWorkflow<BulkMarkdownIngestion, BlobIngestionResult>, BulkMarkdownIngestionWorkflow>();
 
         return services;
     }
