@@ -39,4 +39,16 @@ public static class IngestionTelemetry
 
     public static readonly Counter<long> OpenApiEndpointsProcessed =
         Meter.CreateCounter<long>("openapi_endpoints_processed_total", description: "Number of OpenAPI endpoints processed for ingestion.");
+
+    public static readonly Counter<long> SitemapsFetched =
+        Meter.CreateCounter<long>("sitemaps_fetched_total", description: "Number of sitemap documents fetched.");
+
+    public static readonly Counter<long> SitemapUrlsDiscovered =
+        Meter.CreateCounter<long>("sitemap_urls_discovered_total", description: "Number of URLs discovered via sitemap parsing.");
+
+    public static readonly Counter<long> SitemapUrlsIngested =
+        Meter.CreateCounter<long>("sitemap_urls_ingested_total", description: "Number of sitemap URLs successfully ingested.");
+
+    public static readonly Counter<long> SitemapUrlFailures =
+        Meter.CreateCounter<long>("sitemap_url_failures_total", description: "Number of sitemap URL ingestion attempts that failed.");
 }

@@ -4,12 +4,13 @@ using System.Linq;
 using Azure.Storage.Blobs.Models;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.Aggregates;
+using SemanticHub.IngestionService.Domain.Mappers;
+using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Domain.Results;
 using SemanticHub.IngestionService.Domain.Workflows;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Models;
-using SemanticHub.IngestionService.Services.Processors;
 
 namespace SemanticHub.IngestionService.Application.Workflows;
 
@@ -21,7 +22,8 @@ public sealed class BulkMarkdownIngestionWorkflow(
     IBlobStorageService blobStorageService,
     IMarkdownProcessor markdownProcessor,
     IHtmlProcessor htmlProcessor,
-    IOpenApiProcessor openApiProcessor,
+    IOpenApiSpecParser openApiSpecParser,
+    IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult> openApiWorkflow,
     IngestionOptions options)
     : IIngestionWorkflow<BulkMarkdownIngestion, BlobIngestionResult>
 {
@@ -281,37 +283,26 @@ public sealed class BulkMarkdownIngestionWorkflow(
                 request.ContainerName,
                 cancellationToken);
 
-            if (!openApiProcessor.LooksLikeSpecification(content))
+            if (!openApiSpecParser.LooksLikeSpecification(content))
             {
                 logger.LogWarning("File {FileName} is not a valid OpenAPI spec, skipping", file.Name);
                 return FileIngestionOutcome.FromFailure($"Skipped {file.Name}: Not a valid OpenAPI specification");
             }
 
-            var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}{Path.GetExtension(file.Name)}");
-            await File.WriteAllTextAsync(tempFile, content, cancellationToken);
-
-            try
+            var openApiRequest = new OpenApiIngestionRequest
             {
-                var openApiRequest = new OpenApiIngestionRequest
-                {
-                    SpecSource = tempFile,
-                    DocumentIdPrefix = Path.GetFileNameWithoutExtension(file.Name),
-                    Tags = request.Metadata.Tags.ToList(),
-                    Metadata = request.Metadata.CustomMetadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                };
+                SpecSource = CreateBlobSourceUrl(request, file.Name),
+                DocumentIdPrefix = Path.GetFileNameWithoutExtension(file.Name),
+                Tags = request.Metadata.Tags.ToList(),
+                Metadata = request.Metadata.CustomMetadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+            };
 
-                var ingestionResult = await openApiProcessor.IngestAsync(openApiRequest, cancellationToken);
-                return ingestionResult.Success
-                    ? FileIngestionOutcome.FromSuccess(ingestionResult.TotalChunksIndexed)
-                    : FileIngestionOutcome.FromFailure($"Failed to ingest {file.Name}: {ingestionResult.Message}");
-            }
-            finally
-            {
-                if (File.Exists(tempFile))
-                {
-                    File.Delete(tempFile);
-                }
-            }
+            var domainRequest = openApiRequest.ToDomain();
+            var ingestionResult = await openApiWorkflow.ExecuteAsync(domainRequest, cancellationToken);
+
+            return ingestionResult.Success
+                ? FileIngestionOutcome.FromSuccess(ingestionResult.TotalChunksIndexed)
+                : FileIngestionOutcome.FromFailure($"Failed to ingest {file.Name}: {ingestionResult.Message}");
         }
         catch (Exception ex)
         {

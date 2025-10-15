@@ -76,9 +76,8 @@ public class AzureSearchIndexer(
         return document;
     }
 
-    private SearchDocument CreateBaseDocument(DocumentChunk chunk)
-    {
-        return new SearchDocument
+    private SearchDocument CreateBaseDocument(DocumentChunk chunk) =>
+        new ()
         {
             [options.AzureSearch.KeyField] = chunk.Id,
             [options.AzureSearch.ContentField] = chunk.Content,
@@ -87,7 +86,6 @@ public class AzureSearchIndexer(
             ["ingestedAt"] = chunk.Metadata?.IngestedAt ?? DateTimeOffset.UtcNow,
             ["tags"] = chunk.Metadata?.Tags ?? []
         };
-    }
 
     private void AddOptionalFields(SearchDocument document, DocumentChunk chunk)
     {

@@ -8,8 +8,8 @@ using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Domain.Mappers;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Domain.Results;
+using SemanticHub.IngestionService.Domain.Workflows;
 using SemanticHub.IngestionService.Models;
-using SemanticHub.IngestionService.Services.Processors;
 using Microsoft.Extensions.Logging;
 
 namespace SemanticHub.Tests.Workflows;
@@ -31,7 +31,8 @@ public class BulkMarkdownIngestionWorkflowTests
             storageMock.Object,
             markdownProcessor: Mock.Of<IMarkdownProcessor>(),
             htmlProcessor: Mock.Of<IHtmlProcessor>(),
-            openApiProcessor: Mock.Of<IOpenApiProcessor>());
+            openApiSpecParser: Mock.Of<IOpenApiSpecParser>(),
+            openApiWorkflow: Mock.Of<IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult>>());
 
         var request = new BlobIngestionRequest { BlobPath = "docs/", Tags = new List<string>(), Metadata = new Dictionary<string, object>() };
         var domainRequest = request.ToDomain();
@@ -74,7 +75,8 @@ public class BulkMarkdownIngestionWorkflowTests
             storageMock.Object,
             markdownProcessorMock.Object,
             htmlProcessor: Mock.Of<IHtmlProcessor>(),
-            openApiProcessor: Mock.Of<IOpenApiProcessor>());
+            openApiSpecParser: Mock.Of<IOpenApiSpecParser>(),
+            openApiWorkflow: Mock.Of<IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult>>());
 
         var request = new BlobIngestionRequest { BlobPath = "docs/", Tags = new List<string>(), Metadata = new Dictionary<string, object>() };
         var domainRequest = request.ToDomain();
@@ -90,7 +92,8 @@ public class BulkMarkdownIngestionWorkflowTests
         IBlobStorageService storageService,
         IMarkdownProcessor markdownProcessor,
         IHtmlProcessor htmlProcessor,
-        IOpenApiProcessor openApiProcessor)
+        IOpenApiSpecParser openApiSpecParser,
+        IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult> openApiWorkflow)
     {
         var options = new IngestionOptions
         {
@@ -103,7 +106,8 @@ public class BulkMarkdownIngestionWorkflowTests
             storageService,
             markdownProcessor,
             htmlProcessor,
-            openApiProcessor,
+            openApiSpecParser,
+            openApiWorkflow,
             options);
     }
 }

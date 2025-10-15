@@ -32,3 +32,34 @@ public sealed record BulkMarkdownIngestion(
 {
     public string? ContainerName { get; init; } = ContainerName;
 }
+
+public sealed record SitemapIngestion(
+    IngestionMetadata Metadata,
+    Uri SitemapUri,
+    SitemapIngestionSettings Settings)
+    : IngestionRequest(Metadata, IngestionResource.FromSitemap(SitemapUri));
+
+public sealed record OpenApiSpecificationIngestion : IngestionRequest
+{
+    public OpenApiSpecificationIngestion(
+        IngestionMetadata metadata,
+        string specSource,
+        string? documentIdPrefix)
+        : base(metadata, IngestionResource.FromOpenApi(specSource))
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        if (string.IsNullOrWhiteSpace(specSource))
+        {
+            throw new ArgumentException("Specification source must not be empty.", nameof(specSource));
+        }
+
+        SpecSource = specSource.Trim();
+        DocumentIdPrefix = string.IsNullOrWhiteSpace(documentIdPrefix)
+            ? null
+            : documentIdPrefix.Trim();
+    }
+
+    public string SpecSource { get; }
+
+    public string? DocumentIdPrefix { get; }
+}

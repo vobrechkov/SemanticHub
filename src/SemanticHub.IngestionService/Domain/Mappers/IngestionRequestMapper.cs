@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Models;
 
@@ -59,6 +61,36 @@ public static class IngestionRequestMapper
         return new MarkdownDocumentIngestion(metadata, request.Content, sourceUri);
     }
 
+    public static OpenApiSpecificationIngestion ToDomain(this OpenApiIngestionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(request.SpecSource))
+        {
+            throw new ArgumentException("SpecSource must not be empty.", nameof(request));
+        }
+
+        var trimmedPrefix = string.IsNullOrWhiteSpace(request.DocumentIdPrefix)
+            ? null
+            : request.DocumentIdPrefix.Trim();
+
+        var normalizedSpecSource = NormalizeSpecSource(request.SpecSource, out var specUri);
+
+        var title = !string.IsNullOrWhiteSpace(trimmedPrefix)
+            ? trimmedPrefix
+            : ResolveTitleFromSpec(normalizedSpecSource, specUri);
+
+        var metadata = IngestionMetadata.Create(
+            trimmedPrefix,
+            title,
+            "openapi",
+            specUri,
+            request.Tags,
+            request.Metadata);
+
+        return new OpenApiSpecificationIngestion(metadata, normalizedSpecSource, trimmedPrefix);
+    }
+
     public static BulkMarkdownIngestion ToDomain(this BlobIngestionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -72,6 +104,37 @@ public static class IngestionRequestMapper
             metadata: request.Metadata);
 
         return new BulkMarkdownIngestion(metadata, request.BlobPath, request.ContainerName);
+    }
+
+    public static SitemapIngestion ToDomain(this SitemapIngestionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var sitemapUri = CreateUriOrThrow(request.SitemapUrl);
+
+        var metadata = IngestionMetadata.Create(
+            request.DocumentIdPrefix,
+            request.DocumentIdPrefix ?? sitemapUri.Host,
+            "sitemap",
+            sitemapUri,
+            request.Tags,
+            request.Metadata);
+
+        var allowedHosts = (request.AllowedHosts ?? [])
+            .Where(host => !string.IsNullOrWhiteSpace(host))
+            .Select(host => host.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var settings = new SitemapIngestionSettings
+        {
+            AllowedHosts = allowedHosts,
+            MaxDepth = request.MaxDepth,
+            MaxPages = request.MaxPages,
+            RespectRobotsTxt = request.RespectRobotsTxt,
+            ThrottleMilliseconds = request.ThrottleMilliseconds
+        };
+
+        return new SitemapIngestion(metadata, sitemapUri, settings);
     }
 
     private static Uri CreateUriOrThrow(string url)
@@ -94,5 +157,51 @@ public static class IngestionRequestMapper
         return Uri.TryCreate(value, UriKind.Absolute, out var uri)
             ? uri
             : null;
+    }
+
+    private static string NormalizeSpecSource(string specSource, out Uri? specUri)
+    {
+        var trimmed = specSource.Trim();
+        specUri = null;
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absoluteUri))
+        {
+            specUri = absoluteUri;
+            return trimmed;
+        }
+
+        if (!Path.IsPathRooted(trimmed))
+        {
+            trimmed = Path.GetFullPath(trimmed);
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absoluteFileUri))
+        {
+            specUri = absoluteFileUri;
+        }
+
+        return trimmed;
+    }
+
+    private static string ResolveTitleFromSpec(string normalizedSpecSource, Uri? specUri)
+    {
+        if (specUri is not null)
+        {
+            if (string.Equals(specUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(specUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return specUri.Host;
+            }
+
+            if (specUri.IsFile)
+            {
+                return Path.GetFileNameWithoutExtension(specUri.LocalPath) ?? "OpenAPI Specification";
+            }
+
+            return specUri.Host ?? specUri.ToString();
+        }
+
+        var fileName = Path.GetFileNameWithoutExtension(normalizedSpecSource);
+        return string.IsNullOrWhiteSpace(fileName) ? "OpenAPI Specification" : fileName;
     }
 }

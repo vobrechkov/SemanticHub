@@ -12,5 +12,6 @@ public enum IngestionResourceType
     MarkdownArchive = 4,
     BlobMarkdown = 5,
     BlobHtml = 6,
-    OpenApi = 7
+    OpenApi = 7,
+    Sitemap = 8
 }

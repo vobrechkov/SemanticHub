@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 
 namespace SemanticHub.IngestionService.Domain.Resources;
 
@@ -42,8 +43,35 @@ public sealed record IngestionResource
     public static IngestionResource FromBlobHtml(string blobPath, [StringSyntax("Uri")] string? sourceUrl = null) =>
         new(IngestionResourceType.BlobHtml, sourceUrl is null ? null : new Uri(sourceUrl), blobPath, null);
 
-    public static IngestionResource FromOpenApi(string specPath) =>
-        new(IngestionResourceType.OpenApi, null, specPath, null);
+    public static IngestionResource FromOpenApi(string specSource)
+    {
+        if (string.IsNullOrWhiteSpace(specSource))
+        {
+            throw new ArgumentException("Specification source must not be empty.", nameof(specSource));
+        }
+
+        var normalizedSource = specSource.Trim();
+        Uri? sourceUri = null;
+
+        if (Uri.TryCreate(normalizedSource, UriKind.Absolute, out var absoluteUri))
+        {
+            sourceUri = absoluteUri;
+        }
+        else if (!Path.IsPathRooted(normalizedSource))
+        {
+            var absolutePath = Path.GetFullPath(normalizedSource);
+            normalizedSource = absolutePath;
+            if (Uri.TryCreate(absolutePath, UriKind.Absolute, out var absoluteFileUri))
+            {
+                sourceUri = absoluteFileUri;
+            }
+        }
+
+        return new(IngestionResourceType.OpenApi, sourceUri, normalizedSource, null);
+    }
+
+    public static IngestionResource FromSitemap(Uri sitemapUri) =>
+        new(IngestionResourceType.Sitemap, sitemapUri, null, null);
 
     public static IngestionResource Unknown() =>
         new(IngestionResourceType.Unknown, null, null, null);

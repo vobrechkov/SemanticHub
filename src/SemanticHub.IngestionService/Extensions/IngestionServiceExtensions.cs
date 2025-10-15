@@ -11,8 +11,9 @@ using SemanticHub.IngestionService.Domain.Results;
 using SemanticHub.IngestionService.Domain.Workflows;
 using SemanticHub.IngestionService.Services;
 using SemanticHub.IngestionService.Services.Processors;
+using SemanticHub.IngestionService.Services.OpenApi;
 using SemanticHub.IngestionService.Services.Scraping;
-using SemanticHub.IngestionService.Tools;
+using SemanticHub.IngestionService.Services.Sitemaps;
 
 namespace SemanticHub.IngestionService.Extensions;
 
@@ -78,15 +79,44 @@ public static class IngestionServiceExtensions
         });
 
         services.AddSingleton<IHtmlScraper, PlaywrightHtmlScraper>();
-        services.AddSingleton<OpenApiIngestionTool>();
         services.AddScoped<IMarkdownProcessor, MarkdownProcessor>();
         services.AddScoped<IHtmlProcessor, HtmlProcessor>();
-        services.AddScoped<IOpenApiProcessor, OpenApiProcessor>();
+        services.AddHttpClient<IOpenApiSpecLocator, OpenApiSpecLocator>();
+        services.AddSingleton<IOpenApiSpecParser, OpenApiSpecParser>();
+        services.AddSingleton<IOpenApiMarkdownGenerator, OpenApiMarkdownGenerator>();
+        services.AddSingleton<IOpenApiDocumentSplitter>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<OpenApiDocumentSplitter>>();
+            var options = provider.GetRequiredService<IngestionOptions>().OpenApi;
+            return new OpenApiDocumentSplitter(logger, options);
+        });
+
+        services.AddHttpClient<ISitemapFetcher, HttpSitemapFetcher>()
+            .ConfigureHttpClient((provider, client) =>
+            {
+                var sitemapOptions = provider.GetRequiredService<IngestionOptions>().Sitemap;
+                client.Timeout = TimeSpan.FromSeconds(sitemapOptions.FetchTimeoutSeconds);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(sitemapOptions.UserAgent);
+            });
+
+        services.AddHttpClient<IUrlFilterPolicy, SitemapUrlFilterPolicy>()
+            .ConfigureHttpClient((provider, client) =>
+            {
+                var sitemapOptions = provider.GetRequiredService<IngestionOptions>().Sitemap;
+                client.Timeout = TimeSpan.FromSeconds(sitemapOptions.FetchTimeoutSeconds);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(sitemapOptions.UserAgent);
+            });
+
+        services.AddSingleton<ISitemapParser, XmlSitemapParser>();
+        services.AddSingleton<IChangeFrequencyHeuristic, DefaultChangeFrequencyHeuristic>();
+
+        services.AddScoped<IIngestionWorkflow<SitemapIngestion, SitemapIngestionResult>, SiteMapIngestionWorkflow>();
 
         services.AddScoped<IIngestionWorkflow<MarkdownDocumentIngestion>, MarkdownIngestionWorkflow>();
         services.AddScoped<IIngestionWorkflow<HtmlDocumentIngestion>, HtmlIngestionWorkflow>();
         services.AddScoped<IIngestionWorkflow<WebPageIngestion>, WebPageIngestionWorkflow>();
         services.AddScoped<IIngestionWorkflow<BulkMarkdownIngestion, BlobIngestionResult>, BulkMarkdownIngestionWorkflow>();
+        services.AddScoped<IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult>, OpenApiIngestionWorkflow>();
 
         return services;
     }

@@ -15,12 +15,13 @@ Successfully implemented end-to-end OpenAPI specification ingestion capability f
   - `Tags` and `Metadata`: Optional metadata for all endpoints
 
 #### Service Updates
-- **`Services/Processors/OpenApiProcessor.cs`**
-  - Orchestrates OpenAPI ingestion by:
-    - Parsing specifications with `OpenApiIngestionTool`
-    - Converting endpoints to Markdown with YAML frontmatter
-    - Delegating Markdown ingestion to the Markdown workflow
-    - Aggregating success/error details via `OpenApiIngestionResult`
+- **Domain Layer**
+  - Added `OpenApiSpecificationIngestion` aggregate plus spec/document records to decouple workflows from service implementations.
+- **OpenAPI Pipeline**
+  - `Services/OpenApi/OpenApiSpecLocator.cs` resolves specifications from HTTP, local filesystem, or blob storage.
+  - `Services/OpenApi/OpenApiSpecParser.cs` normalizes OpenAPI documents and extracts strongly-typed endpoint metadata.
+  - `Services/OpenApi/OpenApiMarkdownGenerator.cs` together with `OpenApiDocumentSplitter.cs` synthesises Markdown payloads for each operation.
+  - `Application/Workflows/OpenApiIngestionWorkflow.cs` coordinates parsing, document generation, and Markdown ingestion using the shared pipeline.
 
 #### Endpoint Registration
 - **`Program.cs`**
@@ -82,9 +83,9 @@ Successfully implemented end-to-end OpenAPI specification ingestion capability f
    - Optional: Document ID prefix, tags, and metadata
 
 2. **Parsing & Conversion**
-   - `OpenApiIngestionTool.ParseOpenApiSpecAsync()` parses the spec using Microsoft.OpenApi.Readers
-   - Extracts all endpoints with parameters, request bodies, responses, security, etc.
-   - `ConvertEndpointToMarkdown()` converts each endpoint to:
+   - `OpenApiSpecLocator` fetches the specification content from HTTP/file/blob sources.
+   - `OpenApiSpecParser` normalizes the document with Microsoft.OpenApi and extracts endpoints, parameters, schemas, and security metadata.
+   - `OpenApiMarkdownGenerator` + `OpenApiDocumentSplitter` convert each endpoint into Markdown:
      - YAML frontmatter with metadata (method, path, operationId, tags, version, etc.)
      - Structured Markdown with tables for parameters and code blocks for schemas
 
@@ -201,6 +202,9 @@ dotnet run --project src/SemanticHub.AppHost
 - Frontmatter includes: title, operationId, method, path, tags, version, source
 - Markdown includes: description, servers, parameters table, request/response schemas
 
+### Configuration
+- `Ingestion:OpenApi:MaxMarkdownSegmentLength` controls the maximum characters allowed per generated Markdown segment before the splitter creates additional parts (defaults to 8000). Lower the value to force smaller documents per endpoint when working with very large specs.
+
 ### Error Handling
 - Partial success supported (some endpoints may fail without blocking others)
 - Detailed error tracking per endpoint
@@ -209,18 +213,29 @@ dotnet run --project src/SemanticHub.AppHost
 ## Files Modified
 
 ### Created
-1. `src/SemanticHub.IngestionService/Models/OpenApiIngestionRequest.cs`
-2. `src/SemanticHub.IngestionService/test-openapi-ingestion.http`
+1. `src/SemanticHub.IngestionService/Domain/OpenApi/OpenApiDocuments.cs`
+2. `src/SemanticHub.IngestionService/Domain/Ports/IOpenApiSpecLocator.cs`
+3. `src/SemanticHub.IngestionService/Domain/Ports/IOpenApiSpecParser.cs`
+4. `src/SemanticHub.IngestionService/Domain/Ports/IOpenApiMarkdownGenerator.cs`
+5. `src/SemanticHub.IngestionService/Domain/Ports/IOpenApiDocumentSplitter.cs`
+6. `src/SemanticHub.IngestionService/Services/OpenApi/OpenApiSpecLocator.cs`
+7. `src/SemanticHub.IngestionService/Services/OpenApi/OpenApiSpecParser.cs`
+8. `src/SemanticHub.IngestionService/Services/OpenApi/OpenApiMarkdownGenerator.cs`
+9. `src/SemanticHub.IngestionService/Services/OpenApi/OpenApiDocumentSplitter.cs`
+10. `src/SemanticHub.IngestionService/Application/Workflows/OpenApiIngestionWorkflow.cs`
+11. `src/SemanticHub.Tests/OpenApi/OpenApiSpecParserTests.cs`
+12. `src/SemanticHub.Tests/Workflows/OpenApiIngestionWorkflowTests.cs`
 
 ### Modified
-1. `src/SemanticHub.IngestionService/Services/Processors/OpenApiProcessor.cs`
-2. `src/SemanticHub.IngestionService/Domain/Results/IngestionResults.cs`
-3. `src/SemanticHub.IngestionService/Application/Workflows/MarkdownIngestionWorkflow.cs`
-4. `src/SemanticHub.Api/Models/IngestionModels.cs`
-5. `src/SemanticHub.Api/Services/IngestionClient.cs`
-6. `src/SemanticHub.Api/Tools/IngestionTools.cs`
-7. `src/SemanticHub.Api/Workflows/KnowledgeIngestionWorkflow.cs`
-8. `src/SemanticHub.Api/SemanticHub.Api.http`
+1. `src/SemanticHub.IngestionService/Domain/Aggregates/IngestionRequests.cs`
+2. `src/SemanticHub.IngestionService/Domain/Mappers/IngestionRequestMapper.cs`
+3. `src/SemanticHub.IngestionService/Domain/Resources/IngestionResource.cs`
+4. `src/SemanticHub.IngestionService/Application/Workflows/BulkMarkdownIngestionWorkflow.cs`
+5. `src/SemanticHub.IngestionService/Endpoints/IngestionEndpoints.cs`
+6. `src/SemanticHub.IngestionService/Extensions/IngestionServiceExtensions.cs`
+7. `src/SemanticHub.IngestionService/Models/OpenApiIngestionRequest.cs`
+8. `src/SemanticHub.Api/Models/IngestionModels.cs`
+9. `src/SemanticHub.Api/Tools/IngestionTools.cs`
 
 ## Next Steps (Optional Enhancements)
 

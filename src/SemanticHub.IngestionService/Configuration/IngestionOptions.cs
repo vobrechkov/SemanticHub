@@ -14,6 +14,10 @@ public class IngestionOptions
     public ChunkingOptions Chunking { get; set; } = new();
 
     public AzureBlobStorageOptions BlobStorage { get; set; } = new();
+
+    public SitemapIngestionOptions Sitemap { get; set; } = new();
+
+    public OpenApiIngestionOptions OpenApi { get; set; } = new();
 }
 
 /// <summary>
@@ -88,4 +92,41 @@ public class ChunkingOptions
     public int MaxTokenCount { get; set; } = 1024;
 
     public double OverlapPercentage { get; set; } = 0.1;
+}
+
+/// <summary>
+/// Controls behaviour for sitemap-driven ingestion.
+/// </summary>
+public class SitemapIngestionOptions
+{
+    public int MaxPages { get; set; } = 200;
+
+    public int MaxDepth { get; set; } = 2;
+
+    public int MaxConcurrency { get; set; } = 3;
+
+    public int ThrottleMilliseconds { get; set; } = 250;
+
+    public bool RespectRobotsTxt { get; set; } = true;
+
+    public string UserAgent { get; set; } = "SemanticHubIngestionBot/1.0";
+
+    public int FetchTimeoutSeconds { get; set; } = 30;
+
+    public int MaxSitemapBytes { get; set; } = 2_000_000;
+
+    public double RecencyHalfLifeDays { get; set; } = 30;
+
+    public double ChangeFrequencyWeight { get; set; } = 0.75;
+}
+
+/// <summary>
+/// Controls behaviour specific to OpenAPI ingestion.
+/// </summary>
+public class OpenApiIngestionOptions
+{
+    /// <summary>
+    /// Maximum length of Markdown segments generated per OpenAPI endpoint before splitting.
+    /// </summary>
+    public int MaxMarkdownSegmentLength { get; set; } = 8000;
 }

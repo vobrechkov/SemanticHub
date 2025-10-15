@@ -6,7 +6,6 @@ using SemanticHub.IngestionService.Domain.Mappers;
 using SemanticHub.IngestionService.Domain.Results;
 using SemanticHub.IngestionService.Domain.Workflows;
 using SemanticHub.IngestionService.Models;
-using SemanticHub.IngestionService.Services.Processors;
 
 namespace SemanticHub.IngestionService.Endpoints;
 
@@ -45,6 +44,11 @@ public class IngestionEndpoints : IEndpoint
             .WithName("IngestHtml")
             .WithSummary("Ingest HTML content into Azure AI Search")
             .WithDescription("Converts HTML to Markdown, then chunks, embeds, and indexes it for retrieval.");
+
+        group.MapPost("/sitemap", HandleSitemapIngestionAsync)
+            .WithName("IngestFromSitemap")
+            .WithSummary("Traverse a sitemap and ingest discovered pages")
+            .WithDescription("Fetches sitemap documents, applies filtering and throttling policies, scrapes each page, and indexes the resulting content.");
     }
 
     private static async Task<IResult> HandleMarkdownIngestionAsync(
@@ -77,7 +81,7 @@ public class IngestionEndpoints : IEndpoint
 
     private static async Task<IResult> HandleOpenApiIngestionAsync(
         OpenApiIngestionRequest request,
-        IOpenApiProcessor openApiProcessor,
+        IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult> workflow,
         CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.SpecSource))
@@ -85,7 +89,8 @@ public class IngestionEndpoints : IEndpoint
             return Results.BadRequest(new { error = "Request SpecSource must not be empty." });
         }
 
-        var result = await openApiProcessor.IngestAsync(request, cancellationToken);
+        var domainRequest = request.ToDomain();
+        var result = await workflow.ExecuteAsync(domainRequest, cancellationToken);
 
         var response = new
         {
@@ -148,6 +153,34 @@ public class IngestionEndpoints : IEndpoint
 
         var outcome = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
         return Results.Ok(MapOutcome(outcome));
+    }
+
+    private static async Task<IResult> HandleSitemapIngestionAsync(
+        SitemapIngestionRequest request,
+        IIngestionWorkflow<SitemapIngestion, SitemapIngestionResult> workflow,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.SitemapUrl))
+        {
+            return Results.BadRequest(new { error = "Request SitemapUrl must not be empty." });
+        }
+
+        var result = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
+
+        var response = new
+        {
+            Success = result.TotalFailed == 0,
+            SitemapUrl = result.SitemapUrl,
+            TotalDiscovered = result.TotalDiscovered,
+            TotalFiltered = result.TotalFiltered,
+            TotalIngested = result.TotalIngested,
+            TotalFailed = result.TotalFailed,
+            DurationMs = result.Duration.TotalMilliseconds,
+            Message = result.Message,
+            Errors = result.Errors.Count > 0 ? result.Errors : null
+        };
+
+        return Results.Ok(response);
     }
 
     private static IngestionResponse MapOutcome(IngestionOutcome outcome)
