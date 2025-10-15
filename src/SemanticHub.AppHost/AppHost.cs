@@ -1,52 +1,115 @@
-using Microsoft.Extensions.Hosting;
+using Aspire.Hosting.Azure;
+using Azure.Core;
+using Azure.Provisioning.CognitiveServices;
+using Azure.Provisioning.Search;
+using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var openai = builder.AddAzureOpenAI("openai");
-var storage = builder.AddAzureStorage("storage").RunAsEmulator();
-var blobs = storage.AddBlobs("blobs");
-var queues = storage.AddQueues("queues");
-var chatDeployment = openai.AddDeployment("chat", "gpt-4o-mini", "2024-07-18");
-var embeddingDeployment = openai.AddDeployment("embedding", "text-embedding-3-small", "1");
-var cache = builder.AddRedis("cache", 16379);
-var postgres = builder.AddPostgres("postgres")
-    .WithBindMount(
-        // Enables `vector` extension
-        source: Path.Combine("Infrastructure", "postgres", "init.sql"),
-        target: "/docker-entrypoint-initdb.d/init.sql", 
-        isReadOnly: true)
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent)
-    .WithImage("ankane/pgvector") // Image with `pgvector` support
-    .WithImageTag("latest")
-    .WithHostPort(15432);
+var enableAzureSearch = builder.Configuration.GetValue("Features:AzureSearch:Enabled", true);
+var enableOpenSearch = builder.Configuration.GetValue("Features:OpenSearch:Enabled", false);
 
-var kernelMemory = builder.AddProject<Projects.SemanticHub_KernelMemoryService>("kernelmemory")
-    .WithReference(blobs).WaitFor(blobs)
-    .WithReference(queues).WaitFor(queues)
-    .WithReference(openai).WaitFor(openai)
-    .WithReference(postgres).WaitFor(postgres)
-    .WithEnvironment("KernelMemory__Services__AzureBlobs__Container", blobs.Resource.Name)
-    .WithEnvironment("KernelMemory__Services__AzureOpenAIText_Deployment", chatDeployment.Resource.Name)
-    .WithEnvironment("KernelMemory__Services__AzureOpenAIEmbedding_Deployment", embeddingDeployment.Resource.Name)
-    .WithEnvironment("KernelMemory__Services__Postgres__ConnectionString", postgres.Resource.ConnectionStringExpression)
-    .WithExternalHttpEndpoints();
-
-if (builder.Environment.IsDevelopment())
+IResourceBuilder<AzureSearchResource>? search = null;
+if (enableAzureSearch)
 {
-    // Use connection strings for local development with emulators since Azure Identity is not supported
-    kernelMemory = kernelMemory
-        .WithEnvironment("KernelMemory__Services__AzureBlobs__ConnectionString", blobs.Resource.ConnectionStringExpression)
-        .WithEnvironment("KernelMemory__Services__AzureQueues__ConnectionString", queues.Resource.ConnectionStringExpression);
+    search = builder.AddAzureSearch("search")
+        .ConfigureInfrastructure(infra =>
+        {
+            var searchService = infra.GetProvisionableResources().OfType<SearchService>().Single();
+            searchService.Name = "semhub-eus-dev-search";
+            searchService.Location = AzureLocation.EastUS;
+            searchService.SearchSkuName = SearchServiceSkuName.Free;
+            searchService.IsLocalAuthDisabled = true;
+        });
 }
 
-var api = builder.AddProject<Projects.SemanticHub_KnowledgeApi>("knowledge-api")
-    .WithReference(kernelMemory).WaitFor(kernelMemory);
+IResourceBuilder<ContainerResource>? openSearch = null;
+if (enableOpenSearch)
+{
+    openSearch = builder.AddContainer("opensearch", "opensearchproject/opensearch", "2.12.0")
+        .WithHttpEndpoint(name: "http", port: 9200, targetPort: 9200)
+        .WithEnvironment("discovery.type", "single-node")
+        .WithEnvironment("plugins.security.disabled", "true")
+        .WithEnvironment("plugins.security.allow_default_init_securityindex", "true")
+        .WithEnvironment("OPENSEARCH_JAVA_OPTS", "-Xms512m -Xmx512m")
+        .WithContainerRuntimeArgs("--health-cmd", "curl --silent --fail localhost:9200/_cluster/health || exit 1", "--health-interval", "10s", "--health-timeout", "10s", "--health-retries", "10");
+}
 
-builder.AddProject<Projects.SemanticHub_Web>("web-ui")
+var openai = builder.AddAzureOpenAI("openai")
+    .ConfigureInfrastructure(infra =>
+    {
+        var cogAccount = infra.GetProvisionableResources().OfType<CognitiveServicesAccount>().Single();
+        cogAccount.Name = "semhub-eus-dev-openai";
+        cogAccount.Location = AzureLocation.EastUS;
+        cogAccount.Properties.DisableLocalAuth = true;
+
+    });
+
+var chatDeployment = openai.AddDeployment("chat", "gpt-4o-mini", "2024-07-18");
+var embeddingDeployment = openai.AddDeployment("embedding", "text-embedding-3-small", "1");
+
+// Add Azure Blob Storage with Azurite emulator for local development
+var storage = builder.AddAzureStorage("storage")
+    .RunAsEmulator(container =>
+    {
+        // Configure Azurite to use default ports
+        container.WithLifetime(ContainerLifetime.Persistent);
+    })
+    .ConfigureInfrastructure(infra =>
+    {
+        var storageAccount = infra.GetProvisionableResources()
+            .OfType<Azure.Provisioning.Storage.StorageAccount>()
+            .Single();
+        storageAccount.Name = "semhubeusdevstorage";
+        storageAccount.Location = AzureLocation.EastUS;
+    });
+
+var blobs = storage.AddBlobs("blobs");
+
+IResourceBuilder<ProjectResource>? ingestion = null;
+if (enableAzureSearch && search is not null)
+{
+    ingestion = builder.AddProject<Projects.SemanticHub_IngestionService>("ingestion")
+        .WithReference(openai).WaitFor(openai)
+        .WithReference(search).WaitFor(search)
+        .WithReference(blobs).WaitFor(storage)
+        .WithEnvironment("Ingestion__AzureOpenAI__EmbeddingDeployment", embeddingDeployment.Resource.Name);
+}
+
+var agentApi = builder.AddProject<Projects.SemanticHub_Api>("agent-api")
+    .WithReference(openai).WaitFor(openai)
+    .WithReference(blobs).WaitFor(storage)
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
-    .WithReference(api).WaitFor(api)
-    .WithReference(cache).WaitFor(cache);
+    .WithEnvironment("AgentFramework__AzureOpenAI__ChatDeployment", chatDeployment.Resource.Name)
+    .WithEnvironment("AgentFramework__AzureOpenAI__EmbeddingDeployment", embeddingDeployment.Resource.Name);
+
+if (search is not null)
+{
+    agentApi.WithReference(search).WaitFor(search);
+}
+
+if (ingestion is not null)
+{
+    agentApi.WithReference(ingestion).WaitFor(ingestion);
+}
+
+if (openSearch is not null)
+{
+    agentApi.WaitFor(openSearch)
+        .WithEnvironment("AgentFramework__Memory__Provider", "OpenSearch")
+        .WithEnvironment("AgentFramework__Memory__OpenSearch__Endpoint", openSearch.GetEndpoint("http"));
+}
+
+if (!enableOpenSearch)
+{
+    agentApi.WithEnvironment("AgentFramework__Memory__Provider", "AzureSearch");
+}
+
+var webApp = builder.AddNpmApp("webapp", "../SemanticHub.WebApp", "dev")
+    .WithHttpEndpoint(port: 3000, env: "PORT")
+    .WithExternalHttpEndpoints()
+    .WithEnvironment("AGENT_API_URL", agentApi.GetEndpoint("http"))
+    .WithReference(agentApi).WaitFor(agentApi);
 
 builder.Build().Run();

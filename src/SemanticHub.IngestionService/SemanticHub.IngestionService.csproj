@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="9.5.1-preview.1.25502.11" />
+    <PackageReference Include="Aspire.Azure.Search.Documents" Version="9.5.1" />
+    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="9.5.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+
+    <!-- Microsoft Agent Framework packages (Preview) -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.*" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.*" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.*" />
+
+    <!-- Azure OpenAI and Identity -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.3.0-beta.2" />
+
+    <!-- Azure AI Search -->
+    <PackageReference Include="Azure.Search.Documents" Version="11.*" />
+
+    <!-- Microsoft.Extensions.AI for IChatClient -->
+    <PackageReference Include="Microsoft.Extensions.AI" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.*-*" />
+
+    <!-- Playwright for web scraping -->
+    <PackageReference Include="Microsoft.Playwright" Version="1.*" />
+
+    <!-- HTML to Markdown conversion -->
+    <PackageReference Include="ReverseMarkdown" Version="4.*" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.*" />
+
+    <!-- YAML processing for frontmatter -->
+    <PackageReference Include="YamlDotNet" Version="16.*" />
+
+    <!-- OpenAPI parsing -->
+    <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.*" />
+
+    <!-- Observability and API Documentation -->
+    <PackageReference Include="Scalar.AspNetCore" Version="2.8.11" />
+
+    <!-- Resilience -->
+    <PackageReference Include="Polly" Version="8.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticHub.ServiceDefaults\SemanticHub.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

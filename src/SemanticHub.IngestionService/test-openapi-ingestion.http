@@ -1,0 +1,22 @@
+### Test OpenAPI Ingestion with local file
+POST {{SemanticHub.IngestionService_address}}/ingestion/openapi
+Content-Type: application/json
+
+{
+  "specSource": "/Users/vesselin/Source/GitHub/SemanticKernelMemoryRAG/docs/wealthcare-participant-integration-rest-api-29.0.yaml",
+  "documentIdPrefix": "wealthcare-api-v29",
+  "tags": ["wealthcare", "api", "v29.0", "participant"],
+  "metadata": {
+    "apiVersion": "29.0",
+    "vendor": "Alegeus"
+  }
+}
+
+### Test OpenAPI Ingestion with URL (if you have a hosted spec)
+# POST {{SemanticHub.IngestionService_address}}/ingestion/openapi
+# Content-Type: application/json
+#
+# {
+#   "specSource": "https://api.example.com/openapi.yaml",
+#   "documentIdPrefix": "example-api"
+# }

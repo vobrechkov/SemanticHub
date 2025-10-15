@@ -1,230 +1,367 @@
 # SemanticHub
 
-A sample application that explores integrating Microsoft Kernel Memory as the memory store for Microsoft Semantic Kernel using the "memory as a service" architecture pattern.
+A Retrieval Augmented Generation (RAG) solution built with Microsoft Agent Framework (MAF), Azure AI Search, and Azure OpenAI. Orchestrated with .NET Aspire.
 
 ## Overview
 
-This solution demonstrates how to implement Microsoft Kernel Memory as a dedicated service within a .NET Aspire application. The solution uses .NET Aspire for orchestration and service discovery, providing a scalable architecture for AI applications.
+SemanticHub demonstrates a modern RAG architecture using:
+
+- **Microsoft Agent Framework (MAF)** for agent orchestration and tool execution
+- **Azure AI Search** for hybrid (keyword + vector) semantic retrieval
+- **Azure OpenAI** for chat completions and text embeddings
+- **Azure Blob Storage** for document storage and management
+- **.NET Aspire** for service orchestration, health monitoring, and Azure resource provisioning
+- **OpenSearch** (optional) for local-first development without Azure dependencies
 
 ## Architecture
 
-The solution consists of several interconnected services:
+### Projects
 
-- **SemanticHub.AppHost** - .NET Aspire AppHost that orchestrates all services, handles service discovery, and manages dependencies
-- **SemanticHub.KernelMemoryService** - Dedicated service that provides Kernel Memory functionality as a web service
-- **SemanticHub.KnowledgeApi** - Web API service that exposes knowledge/memory endpoints and proxies requests to KernelMemoryService
-- **SemanticHub.Web** - Blazor Server UI that provides the frontend interface
-- **SemanticHub.ServiceDefaults** - Shared service configuration and extensions
-- **SemanticHub.Tests** - xUnit test project for integration testing
+- **SemanticHub.AppHost** – .NET Aspire orchestrator that provisions Azure resources (AI Search, OpenAI, Blob Storage) and manages service discovery
+- **SemanticHub.Api** – Agent API exposing chat endpoints, knowledge base tools, and multi-agent workflows via Microsoft Agent Framework
+- **SemanticHub.IngestionService** – Document ingestion pipeline for chunking, embedding generation, and Azure AI Search indexing
+- **SemanticHub.WebApp** – Modern Next.js/React UI for agent interaction
+- **SemanticHub.ServiceDefaults** – Shared Aspire configuration (telemetry, health checks, resilience policies)
+- **SemanticHub.Tests** – xUnit integration and unit test suite
 
 ### Service Dependencies
 
-The AppHost defines the following service dependency chain:
-1. Azurite storage emulator (for document storage and queues)
-2. PostgreSQL with pgvector (for vector storage and memory database)
-3. Azure OpenAI (for text generation and embeddings)
-4. Redis cache (for Web UI caching)
-5. KernelMemoryService depends on Azurite, PostgreSQL, and Azure OpenAI
-6. KnowledgeApi depends on KernelMemoryService
-7. Web UI depends on Redis and KnowledgeApi
+Aspire orchestrates the following dependency chain:
+
+1. **Azure OpenAI** – Chat (`gpt-4o-mini`) and embedding (`text-embedding-3-small`) deployments
+2. **Azure AI Search** – Vector + hybrid search index provisioning
+3. **Azure Blob Storage** – Document storage (Azurite emulator for local development)
+4. **SemanticHub.IngestionService** → depends on Azure OpenAI + Azure AI Search
+5. **SemanticHub.Api** → depends on Azure OpenAI + Azure AI Search + Blob Storage + IngestionService
+6. **SemanticHub.WebApp** → depends on API
+
+## Features
+
+- **🤖 Intelligent Agents** – MAF-powered agents with tool execution and function calling
+- **🔍 Hybrid Search** – Combined keyword, semantic, and vector search via Azure AI Search
+- **📚 Knowledge Base** – Automated document chunking, embedding, and indexing
+- **🔄 Multi-Agent Workflows** – Orchestrated agent collaboration for complex tasks
+- **📊 Observability** – OpenTelemetry integration with distributed tracing
+- **🚀 Modern UI** – Next.js/React frontend with real-time updates
+- **🏗️ Production-Ready** – RBAC authentication, health checks, and resilience patterns
 
 ## Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (for Azurite, PostgreSQL, and Redis containers)
-- Azure OpenAI account and deployment (for text generation and embeddings)
+- [Node.js 20+](https://nodejs.org/) (for Next.js frontend)
+- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)
+- Azure subscription with access to:
+  - Azure AI Search
+  - Azure OpenAI Service
+  - Azure Blob Storage
+- Optional: [Docker Desktop](https://www.docker.com/products/docker-desktop) (for OpenSearch/Azurite containers)
 
-## Local Development Setup
-
-### 1. Azurite Storage Emulator
-
-The Azurite storage emulator is automatically managed by .NET Aspire. When you run the AppHost, it will:
-
-- Automatically pull and start the `mcr.microsoft.com/azure-storage/azurite` container
-- Configure blob storage endpoints for document storage
-- Provide a local development environment that mimics Azure Storage
-
-**No manual setup required** - Aspire handles container lifecycle management automatically.
-
-#### Accessing Azurite
-
-Once running, you can access Azurite through:
-- **Blob Service**: `http://127.0.0.1:<dynamic-port>`
-- **Azure Storage Explorer**: Automatically discovers Azurite on default ports
-- **Aspire Dashboard**: Monitor container status and logs
-
-### 2. PostgreSQL with pgvector
-
-PostgreSQL with pgvector extension is automatically managed by Aspire for vector storage and memory database operations. The service uses the `ankane/pgvector:latest` image which includes the pgvector extension for efficient vector similarity searches.
-
-### 3. Redis Cache
-
-Redis is automatically managed by Aspire for Web UI output caching.
-
-## Getting Started
+## Quick Start
 
 ### 1. Clone and Build
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/vobrechkov/SemanticKernelMemoryRAG.git
 cd SemanticKernelMemoryRAG
 dotnet build src/SemanticHub.sln
 ```
 
-### 2. Run the Application
+### 2. Configure Azure RBAC (Required)
+
+Grant your Azure identity the necessary permissions:
 
 ```bash
-# Run the entire solution via Aspire AppHost
+cd src/SemanticHub.AppHost/Scripts
+./setup-all-rbac.sh
+```
+
+Wait 5-10 minutes for role assignments to propagate. See [Scripts/README.md](src/SemanticHub.AppHost/Scripts/README.md) for details.
+
+### 3. Run the Application
+
+```bash
 dotnet run --project src/SemanticHub.AppHost
 ```
 
-This will start all services with proper dependency management:
-1. Azurite storage emulator
-2. PostgreSQL with pgvector
-3. Redis cache
-4. KernelMemoryService
-5. KnowledgeApi
-6. Web UI
+This starts all services via Aspire with automatic resource provisioning and service discovery.
 
-### 3. Access the Services
+### 4. Access the Services
 
-- **Aspire Dashboard**: `https://localhost:<aspire-port>` (check console output)
-- **Web UI**: `https://localhost:<web-port>` (check console output)
-- **KnowledgeApi**: `https://localhost:<api-port>` (check console output)
-- **KernelMemoryService**: `https://localhost:<memory-port>` (check console output)
+- **Aspire Dashboard**: Check terminal output for URL (typically `https://localhost:17xxx`)
+- **Agent API**: Available at `https://localhost:<port>` (see dashboard for port)
+- **Next.js WebApp**: `http://localhost:3000`
+- **API Documentation**: Scalar API docs at Agent API root URL
 
 ## API Endpoints
 
-### KernelMemoryService
+### Agent API (`SemanticHub.Api`)
 
-The KernelMemoryService exposes the Microsoft Kernel Memory endpoints under `/api/memory`:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/agents/chat` | POST | Single-turn chat with agent |
+| `/api/agents/chat/stream` | POST | Streaming chat responses |
+| `/api/workflows/ingest` | POST | Multi-agent ingestion workflow |
+| `/api/workflows/research` | POST | Full research workflow |
+| `/api/workflows/research/fast` | POST | Quick two-step research |
+| `/health` | GET | Health check endpoint |
 
-- `POST /api/memory/upload` - Upload documents (text or files)
-- `POST /api/memory/ask` - Ask questions about stored documents
-- `POST /api/memory/search` - Search through stored knowledge
-- `GET /api/memory/documents/{id}/status` - Check document processing status
-- `DELETE /api/memory/documents/{id}` - Delete documents
-- `GET /api/memory/index` - List available indexes
+### Ingestion Service
 
-### KnowledgeApi
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ingestion/markdown` | POST | Ingest Markdown documents with YAML frontmatter |
+| `/ingestion/webpage` | POST | Scrape and ingest web page content |
+| `/ingestion/openapi` | POST | Parse and ingest OpenAPI specifications (YAML/JSON) |
+| `/health` | GET | Health check endpoint |
 
-The KnowledgeApi provides a simplified interface that proxies requests to KernelMemoryService:
+### Ingesting Documents
 
-- `POST /knowledge/upload/text` - Upload text documents
-- `POST /knowledge/ask` - Ask questions about documents
-- `POST /knowledge/search` - Search knowledge base
-- `GET /knowledge/documents/{id}/status` - Get document processing status
+**Markdown Documents:**
+```bash
+curl -X POST https://localhost:<port>/ingestion/markdown \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Getting Started Guide",
+    "content": "# Introduction\n\nThis is a sample document...",
+    "tags": ["guide", "documentation"]
+  }'
+```
 
-### Interactive API Documentation
+**Web Pages:**
+```bash
+curl -X POST https://localhost:<port>/ingestion/webpage \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/article",
+    "tags": ["article", "web"]
+  }'
+```
 
-- **KernelMemoryService**: Available at the service root URL (uses Scalar API Reference)
-- **KnowledgeApi**: Available at `/swagger` (development only)
+**OpenAPI Specifications:**
+```bash
+curl -X POST https://localhost:<port>/ingestion/openapi \
+  -H "Content-Type: application/json" \
+  -d '{
+    "specSource": "/path/to/openapi.yaml",
+    "documentIdPrefix": "my-api",
+    "tags": ["api", "specification"]
+  }'
+```
+
+The OpenAPI ingestion:
+- Parses OpenAPI 3.x specifications (YAML or JSON)
+- Converts each endpoint to structured Markdown with YAML frontmatter
+- Extracts parameters, request/response schemas, and examples
+- Creates searchable documents for each API endpoint
+- Supports both local file paths and remote URLs
 
 ## Configuration
 
-### Development Configuration
+### Memory Provider Selection
 
-The solution uses environment-specific configuration files:
+Set the provider in `appsettings.json` or via environment variable:
 
-- `appsettings.json` - Base configuration
-- `appsettings.Development.json` - Development overrides
+```bash
+# Azure AI Search (default)
+AgentFramework__Memory__Provider=AzureSearch
 
-### Storage Configuration
+# OpenSearch (local development)
+AgentFramework__Memory__Provider=OpenSearch
+```
 
-- **Document Storage**: Azurite blob storage (local development)
-- **Vector Storage**: PostgreSQL with pgvector extension
-- **Message Queues**: Azure Storage Queues (via Azurite emulator)
-- **Cache**: Redis (for Web UI output caching)
+### Key Configuration Sections
 
-### AI Services Configuration
+**Agent API** (`appsettings.json`):
+```json
+{
+  "AgentFramework": {
+    "AzureOpenAI": {
+      "Endpoint": "https://<name>.openai.azure.com/",
+      "ChatDeployment": "gpt-4o-mini",
+      "EmbeddingDeployment": "text-embedding-3-small"
+    },
+    "Memory": {
+      "Provider": "AzureSearch",
+      "AzureSearch": {
+        "IndexName": "semantichub-kb",
+        "EnableSemanticRanker": true
+      }
+    }
+  }
+}
+```
 
-The solution requires Azure OpenAI configuration:
+**Ingestion Service** (`appsettings.json`):
+```json
+{
+  "Ingestion": {
+    "AzureOpenAI": {
+      "EmbeddingDeployment": "text-embedding-3-small"
+    },
+    "AzureSearch": {
+      "IndexName": "semantichub-kb"
+    },
+    "Chunking": {
+      "TargetTokens": 500,
+      "MaxTokens": 1000,
+      "OverlapTokens": 100
+    }
+  }
+}
+```
 
-- **Text Generation**: GPT-4o-mini (configurable deployment name: `gpt-4o-mini`)
-- **Embeddings**: Text-embedding-3-small (configurable deployment name: `text-embedding-3-small`)
-- **Authentication**: Azure Identity (for production) or connection strings (for development)
+### Authentication
 
-### Environment Configuration
+Services use `DefaultAzureCredential` for Azure authentication:
 
-Environment-specific configuration is handled through:
+- **Local Development**: Uses Azure CLI credentials (`az login`)
+- **Production**: Uses Managed Identity or Service Principal
 
-- **AppHost**: Automatically configures connection strings and environment variables
-- **Development**: Uses connection strings for local emulators
-- **Production**: Uses Azure Identity for secure authentication
+API keys are supported but not recommended for production.
 
-## Development Commands
+## Development
 
 ### Build and Run
+
 ```bash
-# Build the entire solution
+# Build entire solution
 dotnet build src/SemanticHub.sln
 
-# Run the AppHost (starts all services via Aspire)
+# Run via Aspire (recommended)
 dotnet run --project src/SemanticHub.AppHost
 
-# Run individual services (for development)
-dotnet run --project src/SemanticHub.Web
-dotnet run --project src/SemanticHub.KnowledgeApi
-dotnet run --project src/SemanticHub.KernelMemoryService
+# Run individual services
+dotnet run --project src/SemanticHub.Api
+dotnet run --project src/SemanticHub.IngestionService
 ```
 
 ### Testing
+
 ```bash
 # Run all tests
 dotnet test src/SemanticHub.Tests
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
+
+# Run specific test
+dotnet test --filter "FullyQualifiedName~AgentServiceTests"
+```
+
+### Frontend Development
+
+```bash
+cd src/SemanticHub.WebApp
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
 ```
 
 ## Troubleshooting
 
-### Container Issues
+### Azure RBAC Issues
 
-If you encounter container-related issues:
+**Symptom**: "403 Forbidden" or "Insufficient privileges"
 
-1. **Containers not starting**: Check Docker Desktop is running
-2. **Port conflicts**: Aspire will automatically assign available ports
-3. **Azurite connectivity**: Storage Explorer should auto-discover Azurite
-4. **PostgreSQL connectivity**: Check that pgvector image pulled successfully (`ankane/pgvector:latest`)
+**Solution**:
+1. Run RBAC setup scripts: `./src/SemanticHub.AppHost/Scripts/setup-all-rbac.sh`
+2. Wait 5-10 minutes for propagation
+3. Verify role assignments in Azure Portal → Resource Group → Access Control (IAM)
+4. Re-login: `az logout && az login`
+
+### Resource Provisioning Failures
+
+**Symptom**: "Resource already exists" or naming conflicts
+
+**Solution**:
+1. Edit resource names in `src/SemanticHub.AppHost/AppHost.cs`
+2. Ensure names are globally unique (e.g., add your initials)
+3. Verify subscription has available quota for AI Search and OpenAI
 
 ### Service Discovery Issues
 
-If services can't communicate:
+**Symptom**: Services can't connect to dependencies
 
-1. Check the Aspire dashboard for service status
-2. Verify all services are running and healthy
-3. Check service logs in the Aspire dashboard
+**Solution**:
+1. Check Aspire Dashboard for service health status
+2. Ensure all dependencies show as "healthy"
+3. Verify environment variables in Aspire Dashboard → Resources → Environment
 
-### Build Issues
+### Build Errors
 
-If you encounter build errors:
+**Symptom**: Compilation or restore failures
 
-1. Ensure .NET 9 SDK is installed
-2. Clean and rebuild: `dotnet clean && dotnet build`
-3. Check individual project builds
+**Solution**:
+```bash
+# Clean solution
+dotnet clean src/SemanticHub.sln
 
-## Architecture Notes
+# Remove bin/obj directories
+find src -name "bin" -o -name "obj" | xargs rm -rf
 
-- Uses .NET Aspire for service orchestration and health checks
-- Azurite provides local Azure Storage emulation for documents and queues
-- PostgreSQL with pgvector extension handles vector storage and memory database
-- Redis provides output caching for the Web UI
-- The Web project uses Blazor Server with interactive server components
-- Services communicate via HTTP with service discovery handled by Aspire
-- OpenTelemetry is configured for observability across services
-- Health checks are implemented at `/health` endpoints
-- Microsoft Kernel Memory runs as a dedicated service with full API exposure
+# Restore and rebuild
+dotnet restore src/SemanticHub.sln
+dotnet build src/SemanticHub.sln
+```
 
-## Key Features
+## Project Structure
 
-- **Memory as a Service**: Kernel Memory runs as an independent, scalable service
-- **Service Discovery**: Automatic service resolution via Aspire
-- **Local Development**: Zero-configuration local setup with emulators and containers
-- **Vector Search**: PostgreSQL with pgvector for efficient similarity searches
-- **Distributed Processing**: Azure Storage Queues for scalable document processing
-- **AI Integration**: Azure OpenAI for text generation and embeddings
-- **Observability**: Full OpenTelemetry integration with Aspire dashboard
-- **Interactive Documentation**: Scalar API Reference for KernelMemoryService
-- **Scalability**: Services can be scaled independently
-- **Modern Architecture**: .NET 9, Aspire, and cloud-native patterns
+```
+src/
+├── SemanticHub.sln
+├── SemanticHub.AppHost/          # Aspire orchestration
+│   ├── AppHost.cs                # Resource provisioning & service discovery
+│   └── Scripts/                  # RBAC setup scripts
+├── SemanticHub.Api/              # Agent API
+│   ├── Endpoints/                # HTTP endpoints
+│   ├── Services/                 # Agent orchestration
+│   ├── Tools/                    # MAF tools (search, ingestion)
+│   └── Workflows/                # Multi-agent workflows
+├── SemanticHub.IngestionService/ # Document ingestion
+│   ├── Services/                 # Chunking & embedding
+│   └── Configuration/            # Ingestion settings
+├── SemanticHub.WebApp/           # Next.js frontend
+│   ├── src/app/                  # App Router pages
+│   └── src/components/           # React components
+├── SemanticHub.ServiceDefaults/  # Shared Aspire config
+└── SemanticHub.Tests/            # Test suite
+```
+
+## Key Technologies
+
+- **.NET 9** – Application framework
+- **Microsoft Agent Framework** – Agent orchestration
+- **Azure AI Search** – Vector + semantic search
+- **Azure OpenAI** – LLM and embeddings
+- **.NET Aspire** – Service orchestration
+- **Next.js 15** – Modern web UI
+- **xUnit** – Testing framework
+- **OpenTelemetry** – Observability
+
+## Resources
+
+- [Microsoft Agent Framework Documentation](https://learn.microsoft.com/azure/ai-services/agents/)
+- [Azure AI Search Documentation](https://learn.microsoft.com/azure/search/)
+- [.NET Aspire Documentation](https://learn.microsoft.com/dotnet/aspire/)
+- [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
+
+## License
+
+This project is provided as-is for demonstration and educational purposes.
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request with a clear description
+
+---
+
+Built with ❤️ using Microsoft Agent Framework and .NET Aspire

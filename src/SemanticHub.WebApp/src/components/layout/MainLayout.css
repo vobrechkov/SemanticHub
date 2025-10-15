@@ -1,0 +1,12 @@
+/* Layout styles moved to globals.css for better theme integration */
+/* Additional component-specific styles can be added here */
+
+.top-row a {
+  color: var(--bs-link-color);
+  transition: color 0.15s ease-in-out;
+}
+
+.top-row a:hover {
+  color: var(--bs-link-hover-color);
+  text-decoration: underline;
+}

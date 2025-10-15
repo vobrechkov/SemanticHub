@@ -1,0 +1,33 @@
+### Test Blob Ingestion - Ingest all supported files from a blob path
+POST {{ingestionUrl}}/ingestion/blob
+Content-Type: application/json
+
+{
+  "blobPath": "docs/",
+  "containerName": "documents",
+  "tags": ["documentation", "blob-ingestion"],
+  "metadata": {
+    "source": "blob-storage",
+    "ingestedBy": "test-user"
+  }
+}
+
+### Test Blob Ingestion - Specific file
+POST {{ingestionUrl}}/ingestion/blob
+Content-Type: application/json
+
+{
+  "blobPath": "api-specs/my-api.yaml",
+  "tags": ["api", "openapi"]
+}
+
+### Test HTML Ingestion
+POST {{ingestionUrl}}/ingestion/html
+Content-Type: application/json
+
+{
+  "title": "Test HTML Document",
+  "sourceUrl": "https://example.com/test.html",
+  "tags": ["test", "html"],
+  "content": "<!DOCTYPE html><html><head><title>Test</title></head><body><h1>Test Document</h1><p>This is a test HTML document.</p></body></html>"
+}
