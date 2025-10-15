@@ -68,7 +68,8 @@ Tests: `dotnet test src/SemanticHub.sln`
 - Reworked the splitter to consume those options (including guardrails) and logged segmentation decisions for observability (src/SemanticHub.IngestionService/Services/OpenApi/OpenApiDocumentSplitter.cs:14).
 - Updated DI and sample settings to honour the new knob, enabling overrides through Ingestion:OpenApi:MaxMarkdownSegmentLength (src/SemanticHub.IngestionService/Extensions/IngestionServiceExtensions.cs:87, src/SemanticHub.IngestionService/appsettings.json:55).
 - Documented the new configuration and progress in the refactor log (docs/OPENAPI_INGESTION.md:205, docs/ddd-refactor.md:62) and introduced an HTTP-hosted end-to-end workflow test that exercises locator + splitter behaviour (src/SemanticHub.Tests/Workflows/OpenApiIngestionEndToEndTests.cs:18).
+- Added bulk ingestion end-to-end coverage so Markdown, HTML, and OpenAPI blobs execute the expected processors concurrently (`src/SemanticHub.Tests/Workflows/BulkMarkdownIngestionEndToEndTests.cs:1`). Tests: `dotnet test src/SemanticHub.sln`
 
 # Next Steps:
 
-- Ensure sufficient E2E testing coverage to validate the different workflows and services.
+- Monitor ingestion telemetry with the expanded test suite and identify any remaining integration gaps.
