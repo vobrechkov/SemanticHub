@@ -69,7 +69,7 @@ var blobs = storage.AddBlobs("blobs");
 IResourceBuilder<ProjectResource>? ingestion = null;
 if (enableAzureSearch && search is not null)
 {
-    ingestion = builder.AddProject<Projects.SemanticHub_IngestionService>("ingestion")
+    ingestion = builder.AddProject<Projects.SemanticHub_IngestionService>("ingestion-api")
         .WithReference(openai).WaitFor(openai)
         .WithReference(search).WaitFor(search)
         .WithReference(blobs).WaitFor(storage)

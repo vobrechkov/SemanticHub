@@ -77,34 +77,61 @@ public class MarkdownProcessor(
                 return failureResult;
             }
 
+            // Filter out any chunks with empty content as additional defense
+            var validChunks = chunks.Where(c => !string.IsNullOrWhiteSpace(c.Content)).ToList();
+            if (validChunks.Count < chunks.Count)
+            {
+                logger.LogWarning(
+                    "Filtered {FilteredCount} empty chunks for document {DocumentId}",
+                    chunks.Count - validChunks.Count,
+                    metadata.Id);
+            }
+
+            if (validChunks.Count == 0)
+            {
+                logger.LogWarning("No valid chunks after filtering for document {DocumentId}", metadata.Id);
+
+                var failureResult = new DocumentIngestionResult
+                {
+                    Success = false,
+                    DocumentId = metadata.Id,
+                    IndexName = options.AzureSearch.IndexName,
+                    ChunksIndexed = 0,
+                    Message = "No valid content chunks after filtering."
+                };
+
+                RecordFailure(metadata, stopwatch, "no_valid_chunks", activity);
+                return failureResult;
+            }
+
             var embeddings = await embeddingService.GenerateEmbeddingsAsync(
-                chunks.Select(c => c.Content).ToList(),
+                validChunks.Select(c => c.Content).ToList(),
                 cancellationToken);
 
             activity?.SetTag("ingestion.embedding.count", embeddings.Count);
 
-            for (var i = 0; i < chunks.Count && i < embeddings.Count; i++)
+            for (var i = 0; i < validChunks.Count && i < embeddings.Count; i++)
             {
-                chunks[i].ContentVector = embeddings[i];
+                validChunks[i].ContentVector = embeddings[i];
             }
 
             logger.LogInformation(
                 "Uploading {Count} chunks for document {DocumentId}",
-                chunks.Count,
+                validChunks.Count,
                 metadata.Id);
 
-            await indexer.UploadChunksAsync(chunks, cancellationToken);
+            await indexer.UploadChunksAsync(validChunks, cancellationToken);
 
             var result = new DocumentIngestionResult
             {
                 Success = true,
                 DocumentId = metadata.Id,
                 IndexName = options.AzureSearch.IndexName,
-                ChunksIndexed = chunks.Count,
+                ChunksIndexed = validChunks.Count,
                 Message = $"Document '{metadata.Id}' ingested into index '{options.AzureSearch.IndexName}'."
             };
 
-            RecordSuccess(metadata, stopwatch, chunks.Count, activity);
+            RecordSuccess(metadata, stopwatch, validChunks.Count, activity);
             return result;
         }
         catch (Exception ex)

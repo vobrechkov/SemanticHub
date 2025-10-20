@@ -73,6 +73,7 @@ public static class IngestionServiceExtensions
             var logger = provider.GetRequiredService<ILogger<SemanticChunker>>();
             return new SemanticChunker(
                 logger,
+                options.Chunking.MinTokenCount,
                 options.Chunking.TargetTokenCount,
                 options.Chunking.MaxTokenCount,
                 options.Chunking.OverlapPercentage);
