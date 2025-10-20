@@ -177,6 +177,7 @@ public class SemanticChunker(
                     if (chunk != null)
                     {
                         chunks.Add(chunk);
+                        currentPosition = chunk.EndPosition;
                     }
 
                     // Reset with overlap for next chunk
@@ -217,6 +218,7 @@ public class SemanticChunker(
                     if (chunk != null)
                     {
                         chunks.Add(chunk);
+                        currentPosition = chunk.EndPosition;
                     }
 
                     // Reset with overlap and add paragraph to new chunk

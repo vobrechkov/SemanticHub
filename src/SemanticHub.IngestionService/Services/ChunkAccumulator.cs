@@ -173,28 +173,57 @@ public class ChunkAccumulator
     /// </summary>
     private void PrepareOverlapBuffer()
     {
-        var content = _currentContent.ToString().Trim();
-
-        if (string.IsNullOrWhiteSpace(content))
+        if (!HasContent)
         {
             _overlapBuffer = string.Empty;
             return;
         }
 
-        var overlapCharTarget = (int)(content.Length * _overlapPercentage);
+        // Calculate target overlap in tokens
+        var overlapTokenTarget = (int)(CurrentTokenCount * _overlapPercentage);
+        
+        if (overlapTokenTarget <= 0)
+        {
+            _overlapBuffer = string.Empty;
+            return;
+        }
 
-        // Take the last portion of content for overlap
-        if (content.Length <= overlapCharTarget)
+        // If entire content is smaller than overlap target, use all of it
+        if (CurrentTokenCount <= overlapTokenTarget)
         {
-            // Content is smaller than overlap target, use all of it
-            _overlapBuffer = content;
+            _overlapBuffer = _currentContent.ToString().Trim();
+            return;
         }
-        else
+
+        // Accumulate segments from the end until we reach the token target
+        var overlapSegments = new List<string>();
+        var accumulatedTokens = 0;
+
+        // Walk backwards through segments
+        for (int i = _contentSegments.Count - 1; i >= 0; i--)
         {
-            // Take the last N% of characters
-            var startIndex = content.Length - overlapCharTarget;
-            _overlapBuffer = content.Substring(startIndex);
+            var segment = _contentSegments[i];
+            var segmentTokens = _tokenEstimator(segment);
+
+            // Check if adding this segment would exceed our overlap budget
+            if (accumulatedTokens + segmentTokens > overlapTokenTarget && overlapSegments.Count > 0)
+            {
+                // We've accumulated enough, stop here
+                break;
+            }
+
+            overlapSegments.Insert(0, segment);
+            accumulatedTokens += segmentTokens;
+
+            // If we've reached or exceeded the target, we're done
+            if (accumulatedTokens >= overlapTokenTarget)
+            {
+                break;
+            }
         }
+
+        // Join segments with the same separator used in TryAdd
+        _overlapBuffer = string.Join("\n\n", overlapSegments).Trim();
     }
 
     /// <summary>
