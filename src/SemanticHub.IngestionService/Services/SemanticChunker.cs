@@ -10,8 +10,9 @@ namespace SemanticHub.IngestionService.Services;
 /// </summary>
 public class SemanticChunker(
     ILogger<SemanticChunker> logger,
-    int targetChunkSize = 512,
-    int maxChunkSize = 1024,
+    int minChunkSize = 200,
+    int targetChunkSize = 400,
+    int maxChunkSize = 500,
     double overlapPercentage = 0.1)
 {
 
@@ -63,8 +64,20 @@ public class SemanticChunker(
             }
         }
 
-        logger.LogInformation("Created {Count} chunks for document: {DocumentId}", chunks.Count, documentId);
-        return chunks;
+        // Filter out any empty or whitespace-only chunks
+        var validChunks = chunks.Where(c => IsValidChunk(c)).ToList();
+
+        if (validChunks.Count < chunks.Count)
+        {
+            logger.LogWarning(
+                "Filtered {FilteredCount} empty chunks from document {DocumentId}. Valid chunks: {ValidCount}",
+                chunks.Count - validChunks.Count,
+                documentId,
+                validChunks.Count);
+        }
+
+        logger.LogInformation("Created {Count} chunks for document: {DocumentId}", validChunks.Count, documentId);
+        return validChunks;
     }
 
     /// <summary>
@@ -126,7 +139,7 @@ public class SemanticChunker(
     }
 
     /// <summary>
-    /// Split a large section into smaller chunks with overlap
+    /// Split a large section into smaller chunks with overlap using accumulator pattern
     /// </summary>
     private List<DocumentChunk> SplitLargeSection(
         MarkdownSection section,
@@ -138,13 +151,17 @@ public class SemanticChunker(
         var chunks = new List<DocumentChunk>();
         var paragraphs = SplitIntoParagraphs(section.Content);
 
-        var currentChunk = new StringBuilder();
         int chunkIndex = startChunkIndex;
         int currentPosition = startPosition;
-        int overlapTokens = (int)(targetChunkSize * overlapPercentage);
 
-        // Keep track of last few paragraphs for overlap
-        var recentParagraphs = new Queue<string>();
+        // Create accumulator without initial overlap for first chunk in section
+        var accumulator = new ChunkAccumulator(
+            minChunkSize,
+            targetChunkSize,
+            maxChunkSize,
+            overlapPercentage,
+            EstimateTokenCount,
+            initialOverlap: null);
 
         foreach (var paragraph in paragraphs)
         {
@@ -153,105 +170,76 @@ public class SemanticChunker(
             // If single paragraph exceeds max size, split it by sentences
             if (paragraphTokens > maxChunkSize)
             {
-                // Save current chunk if it has content
-                if (currentChunk.Length > 0)
+                // Finalize current chunk if it has content
+                if (accumulator.HasContent)
                 {
-                    chunks.Add(CreateChunk(
-                        documentId,
-                        chunkIndex++,
-                        section.Title,
-                        currentChunk.ToString().Trim(),
-                        currentPosition,
-                        metadata));
+                    var chunk = accumulator.Finalize(documentId, chunkIndex++, section.Title, currentPosition, metadata);
+                    if (chunk != null)
+                    {
+                        chunks.Add(chunk);
+                    }
 
-                    currentChunk.Clear();
-                    recentParagraphs.Clear();
+                    // Reset with overlap for next chunk
+                    accumulator.Reset(includeOverlap: true);
                 }
 
-                // Split paragraph by sentences
+                // Split paragraph by sentences and process
                 var sentences = SplitIntoSentences(paragraph);
                 foreach (var sentence in sentences)
                 {
-                    if (EstimateTokenCount(currentChunk.ToString() + sentence) > targetChunkSize)
+                    if (!accumulator.TryAdd(sentence))
                     {
-                        // Create chunk
-                        if (currentChunk.Length > 0)
+                        // Finalize current chunk
+                        var chunk = accumulator.Finalize(documentId, chunkIndex++, section.Title, currentPosition, metadata);
+                        if (chunk != null)
                         {
-                            chunks.Add(CreateChunk(
-                                documentId,
-                                chunkIndex++,
-                                section.Title,
-                                currentChunk.ToString().Trim(),
-                                currentPosition,
-                                metadata));
+                            chunks.Add(chunk);
+                        }
 
-                            currentChunk.Clear();
+                        // Reset with overlap and try again
+                        accumulator.Reset(includeOverlap: true);
+
+                        // If still doesn't fit, force add it (sentence is huge)
+                        if (!accumulator.TryAdd(sentence))
+                        {
+                            accumulator.ForceAdd(sentence);
                         }
                     }
-
-                    currentChunk.AppendLine(sentence);
                 }
             }
             else
             {
-                // Check if adding this paragraph would exceed target size
-                var potentialContent = currentChunk.ToString() + "\n\n" + paragraph;
-                if (EstimateTokenCount(potentialContent) > targetChunkSize && currentChunk.Length > 0)
+                // Try to add paragraph to current chunk
+                if (!accumulator.TryAdd(paragraph))
                 {
-                    // Create chunk with current content
-                    chunks.Add(CreateChunk(
-                        documentId,
-                        chunkIndex++,
-                        section.Title,
-                        currentChunk.ToString().Trim(),
-                        currentPosition,
-                        metadata));
-
-                    // Start new chunk with overlap
-                    currentChunk.Clear();
-                    var overlapContent = new StringBuilder();
-                    int currentOverlapTokens = 0;
-
-                    // Add recent paragraphs for overlap
-                    foreach (var recentPara in recentParagraphs.Reverse())
+                    // Finalize current chunk
+                    var chunk = accumulator.Finalize(documentId, chunkIndex++, section.Title, currentPosition, metadata);
+                    if (chunk != null)
                     {
-                        var tokens = EstimateTokenCount(recentPara);
-                        if (currentOverlapTokens + tokens <= overlapTokens)
-                        {
-                            overlapContent.Insert(0, recentPara + "\n\n");
-                            currentOverlapTokens += tokens;
-                        }
-                        else
-                        {
-                            break;
-                        }
+                        chunks.Add(chunk);
                     }
 
-                    currentChunk.Append(overlapContent);
-                }
+                    // Reset with overlap and add paragraph to new chunk
+                    accumulator.Reset(includeOverlap: true);
 
-                currentChunk.AppendLine(paragraph);
-                currentChunk.AppendLine();
-
-                // Track recent paragraphs for overlap
-                recentParagraphs.Enqueue(paragraph);
-                if (recentParagraphs.Count > 3) // Keep last 3 paragraphs
-                {
-                    recentParagraphs.Dequeue();
+                    // Try adding to fresh chunk
+                    if (!accumulator.TryAdd(paragraph))
+                    {
+                        // Paragraph is too large even for fresh chunk, force add
+                        accumulator.ForceAdd(paragraph);
+                    }
                 }
             }
         }
 
-        // Add final chunk
-        if (currentChunk.Length > 0)
+        // Add final chunk if it has content
+        if (accumulator.HasContent)
         {
-            chunks.Add(CreateChunk(
-                documentId,
-                chunkIndex,
-                section.Title,
-                currentChunk.ToString().Trim(),
-                currentPosition,
-                metadata));
+            var finalChunk = accumulator.Finalize(documentId, chunkIndex, section.Title, currentPosition, metadata);
+            if (finalChunk != null)
+            {
+                chunks.Add(finalChunk);
+            }
         }
 
         return chunks;
@@ -320,6 +308,14 @@ public class SemanticChunker(
         // Simple approximation: ~4 characters per token
         // This is a rough estimate; for precise counting, use a tokenizer library
         return (int)Math.Ceiling(text.Length / 4.0);
+    }
+
+    /// <summary>
+    /// Validates that a chunk has meaningful content (not empty or whitespace-only)
+    /// </summary>
+    private static bool IsValidChunk(DocumentChunk chunk)
+    {
+        return !string.IsNullOrWhiteSpace(chunk.Content) && chunk.Content.Trim().Length > 0;
     }
 
     /// <summary>

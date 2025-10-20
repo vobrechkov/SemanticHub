@@ -87,10 +87,24 @@ public class AzureSearchOptions
 /// </summary>
 public class ChunkingOptions
 {
-    public int TargetTokenCount { get; set; } = 512;
+    /// <summary>
+    /// Minimum token count for a chunk (soft minimum - smaller chunks may be created at document boundaries)
+    /// </summary>
+    public int MinTokenCount { get; set; } = 200;
 
-    public int MaxTokenCount { get; set; } = 1024;
+    /// <summary>
+    /// Target token count to aim for when building chunks
+    /// </summary>
+    public int TargetTokenCount { get; set; } = 400;
 
+    /// <summary>
+    /// Hard maximum token count - chunks must never exceed this limit
+    /// </summary>
+    public int MaxTokenCount { get; set; } = 500;
+
+    /// <summary>
+    /// Percentage of content overlap between consecutive chunks (0.1 = 10%)
+    /// </summary>
     public double OverlapPercentage { get; set; } = 0.1;
 }
 

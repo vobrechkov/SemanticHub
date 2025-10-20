@@ -49,16 +49,37 @@ public class AzureOpenAIEmbeddingService
             throw new InvalidOperationException("Azure OpenAI embedding deployment is not configured.");
         }
 
-        var normalizedInputs = new List<string>(inputs.Count);
+        // Filter out empty/whitespace inputs with warning instead of throwing
+        var normalizedInputs = new List<string>();
+        var filteredCount = 0;
+
         for (var index = 0; index < inputs.Count; index++)
         {
             var value = inputs[index];
             if (string.IsNullOrWhiteSpace(value))
             {
-                throw new ArgumentException($"Embedding input at index {index} is null or whitespace.", nameof(inputs));
+                _logger.LogWarning(
+                    "Embedding input at index {Index} is null or whitespace. Filtering it out.",
+                    index);
+                filteredCount++;
+                continue;
             }
 
             normalizedInputs.Add(value);
+        }
+
+        if (filteredCount > 0)
+        {
+            _logger.LogWarning(
+                "Filtered {FilteredCount} empty inputs out of {TotalCount} total inputs",
+                filteredCount,
+                inputs.Count);
+        }
+
+        if (normalizedInputs.Count == 0)
+        {
+            _logger.LogError("All embedding inputs were empty or whitespace after filtering");
+            throw new ArgumentException("All embedding inputs are null or whitespace.", nameof(inputs));
         }
 
         using var activity = IngestionTelemetry.ActivitySource.StartActivity("GenerateEmbeddings");
