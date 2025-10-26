@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;

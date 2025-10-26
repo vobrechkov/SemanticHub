@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.Aggregates;

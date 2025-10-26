@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 
 namespace SemanticHub.IngestionService.Domain.Resources;
 

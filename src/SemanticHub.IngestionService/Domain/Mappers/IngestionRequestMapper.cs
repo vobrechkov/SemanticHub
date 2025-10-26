@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Models;
 

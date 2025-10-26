@@ -1,8 +1,4 @@
-using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Application.Workflows;
 using SemanticHub.IngestionService.Domain.Aggregates;

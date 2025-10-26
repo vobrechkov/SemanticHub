@@ -1,11 +1,8 @@
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using Azure.Storage.Blobs.Models;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Domain.Mappers;
-using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Domain.Results;
 using SemanticHub.IngestionService.Domain.Workflows;

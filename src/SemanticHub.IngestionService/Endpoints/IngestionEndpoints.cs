@@ -1,6 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
-using System.Linq;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Domain.Mappers;
 using SemanticHub.IngestionService.Domain.Results;

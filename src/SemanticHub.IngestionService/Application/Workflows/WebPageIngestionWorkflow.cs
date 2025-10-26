@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
-using System.Linq;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Domain.Results;

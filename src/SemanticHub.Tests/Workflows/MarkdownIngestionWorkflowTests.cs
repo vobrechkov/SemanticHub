@@ -1,4 +1,3 @@
-using System.Linq;
 using Moq;
 using SemanticHub.IngestionService.Application.Workflows;
 using SemanticHub.IngestionService.Domain.Aggregates;

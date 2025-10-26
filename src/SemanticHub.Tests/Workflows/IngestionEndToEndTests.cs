@@ -1,8 +1,6 @@
-using System.Linq;
 using System.Xml.Linq;
 using Moq;
 using SemanticHub.IngestionService.Application.Workflows;
-using System.Net;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Domain.Ports;

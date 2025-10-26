@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Models;
 using SemanticHub.IngestionService.Configuration;

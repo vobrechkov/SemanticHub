@@ -1,7 +1,4 @@
-using System.IO;
 using System.IO.Compression;
-using System.Net;
-using System.Net.Http;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Moq;

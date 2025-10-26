@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Routing;
-
 namespace SemanticHub.IngestionService.Endpoints;
 
 /// <summary>

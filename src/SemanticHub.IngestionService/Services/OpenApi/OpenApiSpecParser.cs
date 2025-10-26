@@ -1,12 +1,5 @@
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;

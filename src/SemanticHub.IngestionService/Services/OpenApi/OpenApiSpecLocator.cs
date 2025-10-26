@@ -1,8 +1,4 @@
-using System;
 using System.Diagnostics;
-using System.IO;
-using System.Net.Http;
-using Microsoft.Extensions.Logging;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Domain.Aggregates;

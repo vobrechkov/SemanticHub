@@ -1,8 +1,4 @@
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
-using System.Linq;
-using Microsoft.Extensions.Logging;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Domain.Aggregates;
 using SemanticHub.IngestionService.Domain.OpenApi;

@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Linq;
-using System.Threading;
 using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Domain.Sitemaps;
