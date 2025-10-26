@@ -7,44 +7,45 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="9.5.1-preview.1.25502.11" />
-    <PackageReference Include="Aspire.Azure.Search.Documents" Version="9.5.1" />
-    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="9.5.1" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+    <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="9.5.2-preview.1.25522.3" />
+    <PackageReference Include="Aspire.Azure.Search.Documents" Version="9.5.2" />
+    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="9.5.2" />
 
     <!-- Microsoft Agent Framework packages (Preview) -->
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.*" />
-    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.*" />
-    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.*" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.251016.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.251016.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.251016.1" />
 
     <!-- Azure OpenAI and Identity -->
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.3.0-beta.2" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.5.0-beta.1" />
 
     <!-- Azure AI Search -->
-    <PackageReference Include="Azure.Search.Documents" Version="11.*" />
+    <PackageReference Include="Azure.Search.Documents" Version="11.7.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.10" />
 
     <!-- Microsoft.Extensions.AI for IChatClient -->
-    <PackageReference Include="Microsoft.Extensions.AI" Version="9.*" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.*-*" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="9.10.1" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.10.1-preview.1.25521.4" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.3.7" />
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="2.3.7" />
 
     <!-- Playwright for web scraping -->
-    <PackageReference Include="Microsoft.Playwright" Version="1.*" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.55.0" />
 
     <!-- HTML to Markdown conversion -->
-    <PackageReference Include="ReverseMarkdown" Version="4.*" />
-    <PackageReference Include="HtmlAgilityPack" Version="1.*" />
+    <PackageReference Include="ReverseMarkdown" Version="4.7.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
 
     <!-- YAML processing for frontmatter -->
-    <PackageReference Include="YamlDotNet" Version="16.*" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
 
     <!-- OpenAPI parsing -->
-    <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.*" />
 
     <!-- Observability and API Documentation -->
-    <PackageReference Include="Scalar.AspNetCore" Version="2.8.11" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.9.0" />
 
     <!-- Resilience -->
-    <PackageReference Include="Polly" Version="8.*" />
+    <PackageReference Include="Polly" Version="8.6.4" />
   </ItemGroup>
 
   <ItemGroup>
