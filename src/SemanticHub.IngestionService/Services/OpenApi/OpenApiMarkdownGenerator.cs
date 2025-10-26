@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Models;
@@ -138,7 +140,7 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
         foreach (var parameter in endpoint.Parameters)
         {
             var required = parameter.Required ? "✓" : string.Empty;
-            var type = parameter.Schema?.Type ?? "string";
+            var type = parameter.Schema?.Type.ToString() ?? "string";
             var description = parameter.Description ?? string.Empty;
             var location = parameter.In?.ToString() ?? "unknown";
             sb.AppendLine($"| `{parameter.Name}` | {location} | {type} | {required} | {description} |");
@@ -169,13 +171,16 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
             sb.AppendLine();
         }
 
-        foreach (var content in endpoint.RequestBody.Content)
+        if (endpoint.RequestBody.Content is { Count: > 0 } bodyContent)
         {
-            sb.AppendLine($"**Content-Type:** `{content.Key}`");
-            sb.AppendLine();
+            foreach (var content in bodyContent)
+            {
+                sb.AppendLine($"**Content-Type:** `{content.Key}`");
+                sb.AppendLine();
 
-            AppendSchemaBlock(sb, content.Value.Schema, "###");
-            AppendExampleBlock(sb, content.Value.Example, "###");
+                AppendSchemaBlock(sb, content.Value.Schema, "###");
+                AppendExampleBlock(sb, content.Value.Example, "###");
+            }
         }
     }
 
@@ -194,13 +199,16 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
             sb.AppendLine($"### {response.Key} - {response.Value.Description ?? "Response"}");
             sb.AppendLine();
 
-            foreach (var content in response.Value.Content)
+            if (response.Value.Content is { Count: > 0 } responseContent)
             {
-                sb.AppendLine($"**Content-Type:** `{content.Key}`");
-                sb.AppendLine();
+                foreach (var content in responseContent)
+                {
+                    sb.AppendLine($"**Content-Type:** `{content.Key}`");
+                    sb.AppendLine();
 
-                AppendSchemaBlock(sb, content.Value.Schema, "####");
-                AppendExampleBlock(sb, content.Value.Example, "####");
+                    AppendSchemaBlock(sb, content.Value.Schema, "####");
+                    AppendExampleBlock(sb, content.Value.Example, "####");
+                }
             }
         }
     }
@@ -222,7 +230,7 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
         sb.AppendLine();
     }
 
-    private static void AppendSchemaBlock(StringBuilder sb, OpenApiSchema? schema, string headingPrefix)
+    private static void AppendSchemaBlock(StringBuilder sb, IOpenApiSchema? schema, string headingPrefix)
     {
         if (schema == null)
         {
@@ -237,7 +245,7 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
         sb.AppendLine();
     }
 
-    private static void AppendExampleBlock(StringBuilder sb, IOpenApiAny? example, string headingPrefix)
+    private static void AppendExampleBlock(StringBuilder sb, JsonNode? example, string headingPrefix)
     {
         if (example == null)
         {
@@ -252,12 +260,12 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
         sb.AppendLine();
     }
 
-    private static string SerializeSchema(OpenApiSchema schema)
+    private static string SerializeSchema(IOpenApiSchema schema)
     {
         try
         {
             using var stringWriter = new StringWriter();
-            var writer = new Microsoft.OpenApi.Writers.OpenApiJsonWriter(stringWriter);
+            var writer = new OpenApiJsonWriter(stringWriter);
             schema.SerializeAsV3(writer);
             return stringWriter.ToString();
         }
@@ -267,14 +275,11 @@ public sealed class OpenApiMarkdownGenerator(ILogger<OpenApiMarkdownGenerator> l
         }
     }
 
-    private static string SerializeExample(IOpenApiAny example)
+    private static string SerializeExample(JsonNode example)
     {
         try
         {
-            using var stringWriter = new StringWriter();
-            var writer = new Microsoft.OpenApi.Writers.OpenApiJsonWriter(stringWriter);
-            example.Write(writer, Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0);
-            return stringWriter.ToString();
+            return example.ToJsonString(new() { WriteIndented = true });
         }
         catch (Exception)
         {

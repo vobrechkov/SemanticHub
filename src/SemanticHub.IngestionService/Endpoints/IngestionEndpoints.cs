@@ -14,39 +14,39 @@ public class IngestionEndpoints : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/ingestion")
-            .WithTags("Ingestion")
-            .WithOpenApi();
+            .WithTags("Ingestion");
 
         group.MapPost("/markdown", HandleMarkdownIngestionAsync)
             .WithName("IngestMarkdown")
-            .WithSummary("Ingest Markdown content into Azure AI Search")
+            .WithSummary("Ingest Markdown content")
             .WithDescription("Chunks, embeds, and indexes Markdown content so it can be retrieved by MAF agents.");
+
+        group.MapPost("/html", HandleHtmlIngestionAsync)
+            .WithName("IngestHtml")
+            .WithSummary("Ingest HTML content")
+            .WithDescription("Converts HTML to Markdown, then chunks, embeds, and indexes it for retrieval.");
 
         group.MapPost("/webpage", HandleWebPageIngestionAsync)
             .WithName("IngestWebPage")
-            .WithSummary("Scrape a web page and ingest its content into Azure AI Search")
+            .WithSummary("Scrape and ingest single URL")
             .WithDescription("Fetches a web page, converts it to Markdown, then chunks, embeds, and indexes it for retrieval.");
+
+       group.MapPost("/sitemap", HandleSitemapIngestionAsync)
+            .WithName("IngestFromSitemap")
+            .WithSummary("Scrape and ingest URLs from sitemap")
+            .WithDescription("Fetches sitemap documents, applies filtering and throttling policies, scrapes each page, and indexes the resulting content.");
+
 
         group.MapPost("/openapi", HandleOpenApiIngestionAsync)
             .WithName("IngestOpenApi")
-            .WithSummary("Parse an OpenAPI specification and ingest its endpoints into Azure AI Search")
+            .WithSummary("Parse and ingest OpenAPI spec")
             .WithDescription("Parses an OpenAPI YAML or JSON specification, converts each endpoint to Markdown, then chunks, embeds, and indexes them for retrieval.");
 
         group.MapPost("/blob", HandleBlobIngestionAsync)
             .WithName("IngestFromBlob")
-            .WithSummary("Ingest documents from Azure Blob Storage into Azure AI Search")
+            .WithSummary("Ingest from Azure blob")
             .WithDescription("Reads files from Azure Blob Storage (.md, .yaml, .json, .html) and processes them using the appropriate ingestion mechanism. Returns immediately with Accepted status.");
-
-        group.MapPost("/html", HandleHtmlIngestionAsync)
-            .WithName("IngestHtml")
-            .WithSummary("Ingest HTML content into Azure AI Search")
-            .WithDescription("Converts HTML to Markdown, then chunks, embeds, and indexes it for retrieval.");
-
-        group.MapPost("/sitemap", HandleSitemapIngestionAsync)
-            .WithName("IngestFromSitemap")
-            .WithSummary("Traverse a sitemap and ingest discovered pages")
-            .WithDescription("Fetches sitemap documents, applies filtering and throttling policies, scrapes each page, and indexes the resulting content.");
-    }
+     }
 
     private static async Task<IResult> HandleMarkdownIngestionAsync(
         MarkdownIngestionRequest request,

@@ -1,3 +1,5 @@
+using Microsoft.OpenApi;
+
 namespace SemanticHub.IngestionService.Models;
 
 /// <summary>

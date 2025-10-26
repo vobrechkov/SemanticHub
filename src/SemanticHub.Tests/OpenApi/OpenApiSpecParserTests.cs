@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi;
 using Moq;
 using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Services.OpenApi;
@@ -57,7 +58,7 @@ public class OpenApiSpecParserTests
         Assert.NotEmpty(challengeEndpoint.Parameters);
         var userParam = challengeEndpoint.Parameters.FirstOrDefault(p => p.Name == "user");
         Assert.NotNull(userParam);
-        Assert.Equal(Microsoft.OpenApi.Models.ParameterLocation.Path, userParam.In);
+        Assert.Equal(ParameterLocation.Path, userParam.In);
         Assert.True(userParam.Required);
     }
 

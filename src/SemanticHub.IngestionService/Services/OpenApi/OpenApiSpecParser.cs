@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Microsoft.OpenApi;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;
@@ -23,7 +24,7 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
                content.Contains("swagger", StringComparison.OrdinalIgnoreCase);
     }
 
-    public Task<OpenApiSpecificationDocument> ParseAsync(
+    public async Task<OpenApiSpecificationDocument> ParseAsync(
         OpenApiSpecDocument specDocument,
         CancellationToken cancellationToken = default)
     {
@@ -34,10 +35,19 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
 
         try
         {
-            var reader = CreateReader();
-            var document = reader.Read(specDocument.Content, out var diagnostic);
+            // In OpenAPI.NET v2, use OpenApiDocument.Parse() for string content
+            // The Parse method returns a ReadResult which can be deconstructed
+            var (document, diagnostic) = OpenApiDocument.Parse(specDocument.Content, format: OpenApiConstants.Json);
+            
+            if (document == null)
+            {
+                throw new InvalidOperationException($"Failed to parse OpenAPI document from {specDocument.Source}");
+            }
 
-            LogDiagnostics(diagnostic);
+            if (diagnostic != null)
+            {
+                LogDiagnostics(diagnostic);
+            }
 
             var endpoints = ExtractEndpoints(document, specDocument.Source);
             activity?.SetTag("ingestion.openapi.endpointCount", endpoints.Count);
@@ -55,7 +65,7 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
                 specDocument.Source,
                 endpoints);
 
-            return Task.FromResult(specification);
+            return await Task.FromResult(specification);
         }
         catch (Exception ex)
         {
@@ -65,13 +75,7 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
         }
     }
 
-    private static OpenApiStringReader CreateReader() =>
-        new(new OpenApiReaderSettings
-        {
-            ReferenceResolution = ReferenceResolutionSetting.ResolveLocalReferences
-        });
-
-    private void LogDiagnostics(OpenApiDiagnostic diagnostic)
+    private void LogDiagnostics(Microsoft.OpenApi.Reader.OpenApiDiagnostic diagnostic)
     {
         if (diagnostic.Errors.Count > 0)
         {
@@ -91,12 +95,12 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
     private static List<OpenApiEndpoint> ExtractEndpoints(OpenApiDocument document, string source)
     {
         var version = document.Info?.Version ?? "1.0";
-        var servers = document.Servers?.Select(s => s.Url).ToList() ?? [];
+        var servers = document.Servers?.Select(s => s.Url).Where(url => url != null).ToList() ?? [];
 
         var endpoints = new List<OpenApiEndpoint>();
         foreach (var path in document.Paths)
         {
-            endpoints.AddRange(CreateEndpointsForPath(source, version, servers, path.Key, path.Value));
+            endpoints.AddRange(CreateEndpointsForPath(source, version, servers!, path.Key, path.Value));
         }
 
         return endpoints;
@@ -107,11 +111,17 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
         string version,
         List<string> servers,
         string pathKey,
-        OpenApiPathItem pathItem)
+        IOpenApiPathItem pathItem)
     {
-        foreach (var operation in pathItem.Operations)
+        // Cast IOpenApiPathItem to OpenApiPathItem to access Operations
+        if (pathItem is not OpenApiPathItem concretePathItem || concretePathItem.Operations == null)
         {
-            yield return CreateEndpoint(source, version, servers, pathKey, pathItem, operation);
+            yield break;
+        }
+
+        foreach (var operation in concretePathItem.Operations)
+        {
+            yield return CreateEndpoint(source, version, servers, pathKey, concretePathItem, operation);
         }
     }
 
@@ -121,9 +131,10 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
         List<string> servers,
         string pathKey,
         OpenApiPathItem pathItem,
-        KeyValuePair<OperationType, OpenApiOperation> operation)
+        KeyValuePair<HttpMethod, OpenApiOperation> operation)
     {
-        var method = operation.Key.ToString().ToUpperInvariant();
+        // In v2, HttpMethod is used instead of OperationType enum
+        var method = operation.Key.Method; // Get the string representation
         var mergedParameters = MergeParameters(pathItem.Parameters, operation.Value.Parameters);
 
         var endpoint = new OpenApiEndpoint
@@ -134,12 +145,17 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
             OperationId = operation.Value.OperationId,
             Summary = operation.Value.Summary,
             Description = operation.Value.Description,
-            Tags = operation.Value.Tags?.Select(t => t.Name).Where(t => !string.IsNullOrWhiteSpace(t)).ToList() ?? [],
+            Tags = operation.Value.Tags?
+                .Select(t => t.Name)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Cast<string>() // Ensure non-nullable strings
+                .ToList() ?? [],
             Version = version,
             SourceSpec = source,
             Servers = new List<string>(servers),
             Parameters = mergedParameters,
-            RequestBody = operation.Value.RequestBody,
+            // In v2, RequestBody is IOpenApiRequestBody, cast to OpenApiRequestBody
+            RequestBody = operation.Value.RequestBody as OpenApiRequestBody,
             Responses = operation.Value.Responses ?? []
         };
 
@@ -168,14 +184,21 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
     }
 
     private static List<OpenApiParameter> MergeParameters(
-        IList<OpenApiParameter>? pathParameters,
-        IList<OpenApiParameter>? operationParameters)
+        IList<IOpenApiParameter>? pathParameters,
+        IList<IOpenApiParameter>? operationParameters)
     {
         var merged = new List<OpenApiParameter>();
 
         if (pathParameters != null)
         {
-            merged.AddRange(pathParameters);
+            // Cast IOpenApiParameter to OpenApiParameter
+            foreach (var param in pathParameters)
+            {
+                if (param is OpenApiParameter concreteParam)
+                {
+                    merged.Add(concreteParam);
+                }
+            }
         }
 
         if (operationParameters == null)
@@ -185,8 +208,13 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
 
         foreach (var parameter in operationParameters)
         {
-            merged.RemoveAll(p => p.Name == parameter.Name && p.In == parameter.In);
-            merged.Add(parameter);
+            if (parameter is not OpenApiParameter concreteParameter)
+            {
+                continue;
+            }
+            
+            merged.RemoveAll(p => p.Name == concreteParameter.Name && p.In == concreteParameter.In);
+            merged.Add(concreteParameter);
         }
 
         return merged;
