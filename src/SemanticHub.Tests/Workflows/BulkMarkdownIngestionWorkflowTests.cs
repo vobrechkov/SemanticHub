@@ -86,7 +86,7 @@ public class BulkMarkdownIngestionWorkflowTests
         Assert.Equal(2, result.TotalChunksIndexed);
     }
 
-    private static BulkMarkdownIngestionWorkflow CreateWorkflow(
+    private static BlobIngestionWorkflow CreateWorkflow(
         IBlobStorageService storageService,
         IMarkdownProcessor markdownProcessor,
         IHtmlProcessor htmlProcessor,
@@ -99,8 +99,8 @@ public class BulkMarkdownIngestionWorkflowTests
             BlobStorage = new AzureBlobStorageOptions { DefaultContainer = "container" }
         };
 
-        return new BulkMarkdownIngestionWorkflow(
-            Mock.Of<ILogger<BulkMarkdownIngestionWorkflow>>(),
+        return new BlobIngestionWorkflow(
+            Mock.Of<ILogger<BlobIngestionWorkflow>>(),
             storageService,
             markdownProcessor,
             htmlProcessor,

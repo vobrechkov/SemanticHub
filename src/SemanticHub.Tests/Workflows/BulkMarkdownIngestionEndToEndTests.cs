@@ -50,8 +50,8 @@ public class BulkMarkdownIngestionEndToEndTests
             OpenApi = new OpenApiIngestionOptions { MaxMarkdownSegmentLength = 2_000 }
         };
 
-        var workflow = new BulkMarkdownIngestionWorkflow(
-            NullLogger<BulkMarkdownIngestionWorkflow>.Instance,
+        var workflow = new BlobIngestionWorkflow(
+            NullLogger<BlobIngestionWorkflow>.Instance,
             blobStorage,
             markdownProcessor,
             htmlProcessor,

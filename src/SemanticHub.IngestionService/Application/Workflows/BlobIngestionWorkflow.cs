@@ -14,8 +14,8 @@ namespace SemanticHub.IngestionService.Application.Workflows;
 /// <summary>
 /// Handles bulk ingestion of Markdown, HTML, and OpenAPI content sourced from blob storage.
 /// </summary>
-public sealed class BulkMarkdownIngestionWorkflow(
-    ILogger<BulkMarkdownIngestionWorkflow> logger,
+public sealed class BlobIngestionWorkflow(
+    ILogger<BlobIngestionWorkflow> logger,
     IBlobStorageService blobStorageService,
     IMarkdownProcessor markdownProcessor,
     IHtmlProcessor htmlProcessor,

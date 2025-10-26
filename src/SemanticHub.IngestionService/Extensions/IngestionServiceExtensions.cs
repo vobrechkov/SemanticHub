@@ -112,7 +112,7 @@ public static class IngestionServiceExtensions
         services.AddScoped<IIngestionWorkflow<MarkdownDocumentIngestion>, MarkdownIngestionWorkflow>();
         services.AddScoped<IIngestionWorkflow<HtmlDocumentIngestion>, HtmlIngestionWorkflow>();
         services.AddScoped<IIngestionWorkflow<WebPageIngestion>, WebPageIngestionWorkflow>();
-        services.AddScoped<IIngestionWorkflow<BulkMarkdownIngestion, BlobIngestionResult>, BulkMarkdownIngestionWorkflow>();
+        services.AddScoped<IIngestionWorkflow<BulkMarkdownIngestion, BlobIngestionResult>, BlobIngestionWorkflow>();
         services.AddScoped<IIngestionWorkflow<OpenApiSpecificationIngestion, OpenApiIngestionResult>, OpenApiIngestionWorkflow>();
 
         return services;
