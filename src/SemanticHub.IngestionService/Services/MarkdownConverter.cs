@@ -35,7 +35,8 @@ public class MarkdownConverter : IMarkdownConverter
     }
 
     /// <summary>
-    /// Convert scraped HTML page to Markdown with YAML frontmatter
+    /// Convert scraped HTML page to Markdown with YAML frontmatter.
+    /// Note: HTML cleaning is now handled by HtmlProcessor before this step.
     /// </summary>
     public string ConvertToMarkdown(ScrapedPage scrapedPage)
     {
@@ -43,11 +44,8 @@ public class MarkdownConverter : IMarkdownConverter
 
         try
         {
-            // Clean HTML before conversion
-            var cleanedHtml = CleanHtml(scrapedPage.HtmlContent);
-
-            // Convert to Markdown
-            var markdownContent = _htmlToMarkdown.Convert(cleanedHtml);
+            // HTML is already cleaned by HtmlProcessor, convert directly to Markdown
+            var markdownContent = _htmlToMarkdown.Convert(scrapedPage.HtmlContent);
 
             // Build YAML frontmatter
             var frontmatter = BuildFrontmatter(scrapedPage);
@@ -90,48 +88,6 @@ public class MarkdownConverter : IMarkdownConverter
         return results;
     }
 
-    /// <summary>
-    /// Clean HTML by removing unwanted elements
-    /// </summary>
-    private string CleanHtml(string html)
-    {
-        // Remove script tags
-        html = System.Text.RegularExpressions.Regex.Replace(
-            html,
-            @"<script[^>]*>[\s\S]*?</script>",
-            string.Empty,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        // Remove style tags
-        html = System.Text.RegularExpressions.Regex.Replace(
-            html,
-            @"<style[^>]*>[\s\S]*?</style>",
-            string.Empty,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        // Remove common navigation elements (adjust selectors as needed)
-        var elementsToRemove = new[]
-        {
-            @"<nav[^>]*>[\s\S]*?</nav>",
-            @"<header[^>]*>[\s\S]*?</header>",
-            @"<footer[^>]*>[\s\S]*?</footer>",
-            @"<aside[^>]*>[\s\S]*?</aside>",
-            @"<div[^>]*class=""[^""]*navigation[^""]*""[^>]*>[\s\S]*?</div>",
-            @"<div[^>]*class=""[^""]*sidebar[^""]*""[^>]*>[\s\S]*?</div>",
-            @"<div[^>]*class=""[^""]*footer[^""]*""[^>]*>[\s\S]*?</div>"
-        };
-
-        foreach (var pattern in elementsToRemove)
-        {
-            html = System.Text.RegularExpressions.Regex.Replace(
-                html,
-                pattern,
-                string.Empty,
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        }
-
-        return html;
-    }
 
     /// <summary>
     /// Build YAML frontmatter from scraped page metadata

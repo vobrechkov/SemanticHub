@@ -34,10 +34,17 @@ public class IngestionEndToEndTests
             });
 
         var markdownConverter = new MarkdownConverter(Mock.Of<ILogger<MarkdownConverter>>());
+        var options = Microsoft.Extensions.Options.Options.Create(new IngestionOptions
+        {
+            HtmlExtraction = HtmlExtractionOptions.Default
+        });
+        var contentScorer = new ContentScorer();
         var htmlProcessor = new HtmlProcessor(
             Mock.Of<ILogger<HtmlProcessor>>(),
             markdownConverter,
-            markdownProcessorMock.Object);
+            markdownProcessorMock.Object,
+            options,
+            contentScorer);
 
         var workflow = new HtmlIngestionWorkflow(
             Mock.Of<ILogger<HtmlIngestionWorkflow>>(),

@@ -76,6 +76,7 @@ public static class IngestionServiceExtensions
         });
 
         services.AddSingleton<IHtmlScraper, PlaywrightHtmlScraper>();
+        services.AddSingleton<ContentScorer>();
         services.AddScoped<IMarkdownProcessor, MarkdownProcessor>();
         services.AddScoped<IHtmlProcessor, HtmlProcessor>();
         services.AddHttpClient<IOpenApiSpecLocator, OpenApiSpecLocator>();

@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using HtmlAgilityPack;
+using Microsoft.Extensions.Options;
+using SemanticHub.IngestionService.Configuration;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Domain.Results;
 using SemanticHub.IngestionService.Diagnostics;
@@ -8,29 +10,89 @@ using SemanticHub.IngestionService.Models;
 namespace SemanticHub.IngestionService.Services.Processors;
 
 /// <summary>
-/// Handles ingestion of HTML-originating content by sanitising markup, converting to Markdown, and delegating to the markdown processor.
+/// Handles ingestion of HTML-originating content by extracting main content, sanitising markup, converting to Markdown, and delegating to the markdown processor.
+/// Uses Mozilla Readability-style scoring algorithm to identify and extract the primary content area.
 /// </summary>
 public class HtmlProcessor(
     ILogger<HtmlProcessor> logger,
     IMarkdownConverter markdownConverter,
-    IMarkdownProcessor markdownProcessor) : IHtmlProcessor
+    IMarkdownProcessor markdownProcessor,
+    IOptions<IngestionOptions> options,
+    ContentScorer contentScorer) : IHtmlProcessor
 {
-    // Only strip elements that are truly non-content (scripts, styles, navigation menus)
-    private static readonly string[] StructuralNodesToStrip = ["script", "style", "nav"];
-    
-    // Match exact class names or class names as complete words (not substrings)
-    // These should be highly specific to avoid removing content
-    private static readonly string[] ExactClassNamesToStrip = 
+    private readonly HtmlExtractionOptions _extractionOptions = options.Value.HtmlExtraction;
+
+    // Always remove these structural elements (absolutely non-content)
+    private static readonly string[] StructuralNodesToStrip = ["script", "style", "noscript"];
+
+    // Comprehensive list of class names indicating non-content elements
+    // Based on patterns from Mozilla Readability, Trafilatura, and other leading extractors
+    private static readonly string[] ExactClassNamesToStrip =
     [
+        // Navigation
         "navigation",
-        "navbar", 
+        "navbar",
         "nav-bar",
-        "sidebar",
-        "side-bar",
+        "nav-menu",
+        "menu",
         "breadcrumb",
         "breadcrumbs",
-        "menu",
-        "nav-menu"
+
+        // Layout
+        "sidebar",
+        "side-bar",
+        "widget",
+
+        // Advertising & Promotions
+        "advertisement",
+        "ad",
+        "ads",
+        "ad-block",
+        "ad-wrapper",
+        "ad-container",
+        "banner",
+        "promo",
+        "promotion",
+        "sponsor",
+        "sponsored",
+
+        // Social & Sharing
+        "social",
+        "social-share",
+        "share",
+        "share-buttons",
+        "sharing",
+
+        // Comments & Discussion
+        "comments",
+        "comment",
+        "comment-section",
+        "comment-form",
+        "reply",
+        "reply-form",
+        "disqus",
+
+        // Related Content
+        "related",
+        "related-posts",
+        "related-articles",
+        "recommended",
+
+        // Utilities
+        "cookie-notice",
+        "cookie-banner",
+        "gdpr",
+        "newsletter",
+        "subscribe",
+        "subscription",
+        "popup",
+        "modal",
+        "overlay",
+
+        // Pagination
+        "pagination",
+        "pager",
+        "page-numbers"
     ];
 
     public Task<DocumentIngestionResult> IngestHtmlAsync(
@@ -77,6 +139,16 @@ public class HtmlProcessor(
         if (!string.IsNullOrWhiteSpace(request.Title))
         {
             scrapedPage.Title = request.Title!;
+        }
+
+        // Add base URL to metadata for URL resolution
+        if (!string.IsNullOrWhiteSpace(scrapedPage.Url))
+        {
+            scrapedPage.Metadata["base-url"] = scrapedPage.Url;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.Url))
+        {
+            scrapedPage.Metadata["base-url"] = request.Url;
         }
 
         scrapedPage.HtmlContent = NormalizeHtml(scrapedPage.HtmlContent, scrapedPage.Metadata);
@@ -157,15 +229,34 @@ public class HtmlProcessor(
         document.LoadHtml(html);
 
         var originalLength = document.DocumentNode.OuterHtml.Length;
-        
-        RemoveStructuralNodes(document);
-        RemoveNodesByClass(document);
-        RemoveComments(document);
+
+        // Step 1: Extract metadata before any modifications
         ExtractMetadata(document, metadata);
 
-        var normalizedLength = document.DocumentNode.OuterHtml.Length;
-        var reductionPercent = originalLength > 0 
-            ? ((originalLength - normalizedLength) / (double)originalLength * 100) 
+        // Step 2: Remove structural noise (scripts, styles, etc.)
+        RemoveStructuralNodes(document);
+        RemoveNodesByClass(document);
+        RemoveNodesById(document);
+        RemoveComments(document);
+
+        // Step 3: Extract main content area using scoring algorithm
+        var mainContent = ExtractMainContent(document);
+
+        // Step 4: Resolve relative URLs to absolute (if base URL is available)
+        if (_extractionOptions.ResolveRelativeUrls && metadata.TryGetValue("base-url", out var baseUrl))
+        {
+            ResolveRelativeUrls(mainContent, baseUrl);
+        }
+
+        // Step 5: Clean conditionally (remove low-value elements)
+        if (_extractionOptions.AggressiveCleaning)
+        {
+            CleanConditionally(mainContent);
+        }
+
+        var normalizedLength = mainContent.OuterHtml.Length;
+        var reductionPercent = originalLength > 0
+            ? ((originalLength - normalizedLength) / (double)originalLength * 100)
             : 0;
 
         logger.LogDebug(
@@ -174,7 +265,7 @@ public class HtmlProcessor(
             normalizedLength,
             reductionPercent);
 
-        if (normalizedLength < 100)
+        if (normalizedLength < _extractionOptions.MinTextLength)
         {
             logger.LogWarning(
                 "HTML normalization resulted in very small content ({Length} chars). Original was {OriginalLength} chars. Content may have been stripped too aggressively.",
@@ -182,7 +273,7 @@ public class HtmlProcessor(
                 originalLength);
         }
 
-        return document.DocumentNode.OuterHtml;
+        return mainContent.OuterHtml;
     }
 
     private static void RemoveStructuralNodes(HtmlDocument document)
@@ -253,8 +344,9 @@ public class HtmlProcessor(
         }
     }
 
-    private static void RemoveNodesByClass(HtmlDocument document)
+    private void RemoveNodesByClass(HtmlDocument document)
     {
+        // First remove hardcoded class names
         foreach (var className in ExactClassNamesToStrip)
         {
             // Match complete class names using word boundaries
@@ -270,6 +362,43 @@ public class HtmlProcessor(
 
             foreach (var node in nodes)
             {
+                node.Remove();
+            }
+        }
+
+        // Then remove configurable class names
+        foreach (var className in _extractionOptions.RemoveClassNames)
+        {
+            var xpath = $"//*[contains(concat(' ', normalize-space(@class), ' '), ' {className} ')]";
+            var nodes = document.DocumentNode.SelectNodes(xpath);
+            if (nodes == null)
+            {
+                continue;
+            }
+
+            foreach (var node in nodes)
+            {
+                node.Remove();
+            }
+        }
+    }
+
+    private void RemoveNodesById(HtmlDocument document)
+    {
+        // Remove elements by ID patterns (common non-content IDs)
+        var nonContentIds = new[]
+        {
+            "header", "footer", "nav", "navigation", "sidebar", "menu",
+            "comments", "disqus_thread", "ad", "advertisement", "banner",
+            "social", "share", "cookie-notice", "newsletter"
+        };
+
+        foreach (var id in nonContentIds)
+        {
+            var node = document.DocumentNode.SelectSingleNode($"//*[@id='{id}']");
+            if (node != null)
+            {
+                logger.LogTrace("Removing element by ID: {Id}", id);
                 node.Remove();
             }
         }
@@ -330,5 +459,227 @@ public class HtmlProcessor(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Extract main content area using Mozilla Readability-style scoring algorithm.
+    /// Identifies the most likely content container and returns it.
+    /// </summary>
+    private HtmlNode ExtractMainContent(HtmlDocument document)
+    {
+        // First try configured content selectors (explicit hints)
+        foreach (var selector in _extractionOptions.ContentSelectors)
+        {
+            var node = TrySelectByCssSelector(document, selector);
+            if (node != null && contentScorer.GetConfidenceScore(node) >= _extractionOptions.MinConfidenceThreshold)
+            {
+                logger.LogDebug("Found main content using selector: {Selector}", selector);
+                return node;
+            }
+        }
+
+        // Try semantic HTML5 elements first (most reliable)
+        var semanticSelectors = new[] { "article", "main", "[role='main']" };
+        foreach (var selector in semanticSelectors)
+        {
+            var candidates = document.DocumentNode.SelectNodes($"//{selector}");
+            if (candidates == null || candidates.Count == 0)
+            {
+                continue;
+            }
+
+            // Score each candidate and pick the best
+            var scoredCandidates = candidates
+                .Select(node => new { Node = node, Score = contentScorer.CalculateScore(node) })
+                .OrderByDescending(x => x.Score)
+                .ToList();
+
+            if (scoredCandidates.Count > 0 && scoredCandidates[0].Score > 0)
+            {
+                logger.LogDebug(
+                    "Found main content in <{Element}> with score: {Score}",
+                    scoredCandidates[0].Node.Name,
+                    scoredCandidates[0].Score);
+                return scoredCandidates[0].Node;
+            }
+        }
+
+        // Fallback: Score all div and section elements
+        var divAndSections = document.DocumentNode.SelectNodes("//div | //section");
+        if (divAndSections != null && divAndSections.Count > 0)
+        {
+            var scoredElements = divAndSections
+                .Select(node => new
+                {
+                    Node = node,
+                    Score = contentScorer.CalculateScore(node),
+                    Confidence = contentScorer.GetConfidenceScore(node)
+                })
+                .Where(x => x.Confidence >= _extractionOptions.MinConfidenceThreshold)
+                .OrderByDescending(x => x.Score)
+                .ToList();
+
+            if (scoredElements.Count > 0)
+            {
+                logger.LogInformation(
+                    "Extracted main content from <{Element}> with score: {Score} (confidence: {Confidence:F2})",
+                    scoredElements[0].Node.Name,
+                    scoredElements[0].Score,
+                    scoredElements[0].Confidence);
+                return scoredElements[0].Node;
+            }
+        }
+
+        // Last resort: Use body element
+        logger.LogWarning("Could not identify main content area, using entire body");
+        return document.DocumentNode.SelectSingleNode("//body") ?? document.DocumentNode;
+    }
+
+    /// <summary>
+    /// Try to select a node using CSS selector syntax (limited support via XPath conversion).
+    /// </summary>
+    private static HtmlNode? TrySelectByCssSelector(HtmlDocument document, string selector)
+    {
+        try
+        {
+            // Handle common CSS selectors by converting to XPath
+            string xpath = selector switch
+            {
+                var s when s.StartsWith('#') => $"//*[@id='{s[1..]}']",
+                var s when s.StartsWith('.') => $"//*[contains(concat(' ', normalize-space(@class), ' '), ' {s[1..]} ')]",
+                var s when s.StartsWith('[') && s.Contains("role") => $"//{s}",
+                _ => $"//{selector}"
+            };
+
+            return document.DocumentNode.SelectSingleNode(xpath);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolve relative URLs to absolute URLs using the base URL.
+    /// </summary>
+    private void ResolveRelativeUrls(HtmlNode content, string baseUrlString)
+    {
+        if (!Uri.TryCreate(baseUrlString, UriKind.Absolute, out var baseUri))
+        {
+            logger.LogWarning("Invalid base URL for resolving relative URLs: {BaseUrl}", baseUrlString);
+            return;
+        }
+
+        // Resolve links
+        if (_extractionOptions.IncludeLinks)
+        {
+            var links = content.SelectNodes(".//a[@href]");
+            if (links != null)
+            {
+                foreach (var link in links)
+                {
+                    var href = link.GetAttributeValue("href", string.Empty);
+                    if (string.IsNullOrWhiteSpace(href) || href.StartsWith('#') || href.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Remove fragment-only and javascript links
+                        link.SetAttributeValue("href", string.Empty);
+                        continue;
+                    }
+
+                    if (Uri.TryCreate(baseUri, href, out var absoluteUri))
+                    {
+                        link.SetAttributeValue("href", absoluteUri.ToString());
+                    }
+                }
+            }
+        }
+
+        // Resolve images
+        if (_extractionOptions.IncludeImages)
+        {
+            var images = content.SelectNodes(".//img[@src]");
+            if (images != null)
+            {
+                foreach (var img in images)
+                {
+                    var src = img.GetAttributeValue("src", string.Empty);
+                    if (!string.IsNullOrWhiteSpace(src) && Uri.TryCreate(baseUri, src, out var absoluteUri))
+                    {
+                        img.SetAttributeValue("src", absoluteUri.ToString());
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Conditionally remove elements that are likely not content based on various heuristics.
+    /// Implements the conditional cleaning logic from Mozilla Readability.
+    /// </summary>
+    private void CleanConditionally(HtmlNode content)
+    {
+        var tagsToClean = new[] { "div", "section", "table", "ul", "ol" };
+
+        foreach (var tagName in tagsToClean)
+        {
+            var nodes = content.SelectNodes($".//{tagName}");
+            if (nodes == null)
+            {
+                continue;
+            }
+
+            foreach (var node in nodes.ToList())
+            {
+                var score = contentScorer.CalculateScore(node);
+                var linkDensity = contentScorer.CalculateLinkDensity(node);
+                var textContent = (node.InnerText ?? string.Empty).Trim();
+                var textLength = textContent.Length;
+
+                bool shouldRemove = false;
+
+                // Remove if score is negative (clearly non-content)
+                if (score < 0)
+                {
+                    shouldRemove = true;
+                }
+
+                // Remove if very short and no images
+                if (textLength < _extractionOptions.MinTextLength)
+                {
+                    var hasImages = node.SelectNodes(".//img")?.Count > 0;
+                    if (!hasImages)
+                    {
+                        shouldRemove = true;
+                    }
+                }
+
+                // Remove if high link density and low score
+                if (_extractionOptions.PenalizeLinkDensity &&
+                    linkDensity > _extractionOptions.MaxLinkDensity &&
+                    score < 25)
+                {
+                    shouldRemove = true;
+                }
+
+                // Remove if more list items than paragraphs (likely navigation)
+                var listItems = node.SelectNodes(".//li")?.Count ?? 0;
+                var paragraphs = node.SelectNodes(".//p")?.Count ?? 0;
+                if (listItems > paragraphs && listItems > 3)
+                {
+                    shouldRemove = true;
+                }
+
+                if (shouldRemove)
+                {
+                    logger.LogTrace(
+                        "Removing {TagName} element conditionally (score: {Score}, linkDensity: {LinkDensity:F2}, textLength: {TextLength})",
+                        tagName,
+                        score,
+                        linkDensity,
+                        textLength);
+                    node.Remove();
+                }
+            }
+        }
     }
 }

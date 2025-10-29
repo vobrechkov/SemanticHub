@@ -18,6 +18,8 @@ public class IngestionOptions
     public SitemapIngestionOptions Sitemap { get; set; } = new();
 
     public OpenApiIngestionOptions OpenApi { get; set; } = new();
+
+    public HtmlExtractionOptions HtmlExtraction { get; set; } = new();
 }
 
 /// <summary>
