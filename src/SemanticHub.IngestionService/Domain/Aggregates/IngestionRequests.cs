@@ -18,6 +18,13 @@ public sealed record WebPageIngestion(IngestionMetadata Metadata, Uri Url)
     public string? TitleOverride { get; init; }
 }
 
+public sealed record BatchWebPageIngestion(IngestionMetadata Metadata, IReadOnlyList<Uri> Urls)
+    : IngestionRequest(Metadata, IngestionResource.FromBatchWebPages(Urls))
+{
+    public int MaxConcurrency { get; init; } = 3;
+    public int ThrottleMilliseconds { get; init; } = 250;
+}
+
 public sealed record HtmlDocumentIngestion(IngestionMetadata Metadata, string HtmlContent, Uri? SourceUri = null)
     : IngestionRequest(Metadata, IngestionResource.FromHtml(HtmlContent, SourceUri));
 

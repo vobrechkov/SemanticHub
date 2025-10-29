@@ -15,8 +15,23 @@ public class HtmlProcessor(
     IMarkdownConverter markdownConverter,
     IMarkdownProcessor markdownProcessor) : IHtmlProcessor
 {
-    private static readonly string[] StructuralNodesToStrip = ["script", "style", "nav", "header", "footer", "aside"];
-    private static readonly string[] ClassMarkersToStrip = ["navigation", "sidebar", "footer", "header", "breadcrumb"];
+    // Only strip elements that are truly non-content (scripts, styles, navigation menus)
+    private static readonly string[] StructuralNodesToStrip = ["script", "style", "nav"];
+    
+    // Match exact class names or class names as complete words (not substrings)
+    // These should be highly specific to avoid removing content
+    private static readonly string[] ExactClassNamesToStrip = 
+    [
+        "navigation",
+        "navbar", 
+        "nav-bar",
+        "sidebar",
+        "side-bar",
+        "breadcrumb",
+        "breadcrumbs",
+        "menu",
+        "nav-menu"
+    ];
 
     public Task<DocumentIngestionResult> IngestHtmlAsync(
         HtmlIngestionRequest request,
@@ -141,19 +156,40 @@ public class HtmlProcessor(
         var document = new HtmlDocument();
         document.LoadHtml(html);
 
+        var originalLength = document.DocumentNode.OuterHtml.Length;
+        
         RemoveStructuralNodes(document);
         RemoveNodesByClass(document);
         RemoveComments(document);
         ExtractMetadata(document, metadata);
+
+        var normalizedLength = document.DocumentNode.OuterHtml.Length;
+        var reductionPercent = originalLength > 0 
+            ? ((originalLength - normalizedLength) / (double)originalLength * 100) 
+            : 0;
+
+        logger.LogDebug(
+            "HTML normalization: {OriginalLength} -> {NormalizedLength} chars ({ReductionPercent:F1}% reduction)",
+            originalLength,
+            normalizedLength,
+            reductionPercent);
+
+        if (normalizedLength < 100)
+        {
+            logger.LogWarning(
+                "HTML normalization resulted in very small content ({Length} chars). Original was {OriginalLength} chars. Content may have been stripped too aggressively.",
+                normalizedLength,
+                originalLength);
+        }
 
         return document.DocumentNode.OuterHtml;
     }
 
     private static void RemoveStructuralNodes(HtmlDocument document)
     {
-        foreach (var node in StructuralNodesToStrip)
+        foreach (var nodeType in StructuralNodesToStrip)
         {
-            var matches = document.DocumentNode.SelectNodes($"//{node}");
+            var matches = document.DocumentNode.SelectNodes($"//{nodeType}");
             if (matches == null)
             {
                 continue;
@@ -164,13 +200,69 @@ public class HtmlProcessor(
                 match.Remove();
             }
         }
+        
+        // Remove header/footer elements that are NOT within article or main content
+        // This preserves article headers (titles) while removing page headers/footers
+        RemoveNonContentHeadersFooters(document);
+    }
+
+    private static void RemoveNonContentHeadersFooters(HtmlDocument document)
+    {
+        // Remove top-level headers and footers (page chrome)
+        // Keep headers/footers within article or main tags (likely content)
+        var topLevelHeaders = document.DocumentNode.SelectNodes(
+            "//header[not(ancestor::article) and not(ancestor::main) and not(ancestor::*[@role='main'])]");
+        if (topLevelHeaders != null)
+        {
+            foreach (var header in topLevelHeaders)
+            {
+                // Check if it contains actual content (article title, etc.) by looking for h1-h6
+                var hasHeadings = header.SelectNodes(".//h1 | .//h2 | .//h3 | .//h4 | .//h5 | .//h6");
+                if (hasHeadings == null || hasHeadings.Count == 0)
+                {
+                    // No headings, likely page chrome, safe to remove
+                    header.Remove();
+                }
+                // Otherwise keep it - might be article title
+            }
+        }
+
+        var topLevelFooters = document.DocumentNode.SelectNodes(
+            "//footer[not(ancestor::article) and not(ancestor::main) and not(ancestor::*[@role='main'])]");
+        if (topLevelFooters != null)
+        {
+            foreach (var footer in topLevelFooters)
+            {
+                footer.Remove();
+            }
+        }
+        
+        // Remove aside elements that don't appear to be related content
+        var asides = document.DocumentNode.SelectNodes("//aside");
+        if (asides != null)
+        {
+            foreach (var aside in asides)
+            {
+                // Keep asides that have significant text content (might be related info)
+                var textLength = aside.InnerText?.Trim().Length ?? 0;
+                if (textLength < 100)
+                {
+                    aside.Remove();
+                }
+            }
+        }
     }
 
     private static void RemoveNodesByClass(HtmlDocument document)
     {
-        foreach (var marker in ClassMarkersToStrip)
+        foreach (var className in ExactClassNamesToStrip)
         {
-            var nodes = document.DocumentNode.SelectNodes($"//*[contains(@class, '{marker}')]");
+            // Match complete class names using word boundaries
+            // This XPath looks for class attributes where the className appears as a complete word
+            // Matches: class="navigation", class="foo navigation bar", etc.
+            // Does NOT match: class="main-navigation", class="page-navigation-menu"
+            var xpath = $"//*[contains(concat(' ', normalize-space(@class), ' '), ' {className} ')]";
+            var nodes = document.DocumentNode.SelectNodes(xpath);
             if (nodes == null)
             {
                 continue;

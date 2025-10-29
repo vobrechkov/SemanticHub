@@ -13,5 +13,6 @@ public enum IngestionResourceType
     BlobMarkdown = 5,
     BlobHtml = 6,
     OpenApi = 7,
-    Sitemap = 8
+    Sitemap = 8,
+    BatchWebPage = 9
 }

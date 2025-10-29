@@ -77,7 +77,8 @@ public class OpenApiSpecParserTests
         Assert.Contains(cardEndpoint.Parameters, p => p.Name == "employerId");
         Assert.Contains(cardEndpoint.Parameters, p => p.Name == "participantId");
         Assert.NotNull(cardEndpoint.RequestBody);
-        Assert.NotEmpty(cardEndpoint.RequestBody!.Content);
+        Assert.NotNull(cardEndpoint.RequestBody.Content);
+        Assert.NotEmpty(cardEndpoint.RequestBody.Content);
         Assert.NotEmpty(cardEndpoint.Responses);
     }
 

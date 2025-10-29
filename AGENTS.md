@@ -76,7 +76,8 @@ The ingestion service has been refactored following Domain-Driven Design princip
 **Application Layer** (`Application/Workflows/`)
 - `MarkdownIngestionWorkflow.cs` – Processes single Markdown documents
 - `HtmlIngestionWorkflow.cs` – Processes single HTML documents
-- `WebPageIngestionWorkflow.cs` – Scrapes and processes web pages
+- `WebPageIngestionWorkflow.cs` – Scrapes and processes single web pages
+- `BatchWebPageIngestionWorkflow.cs` – Batch processes multiple URLs with concurrency control
 - `SiteMapIngestionWorkflow.cs` – Crawls sitemaps and ingests discovered URLs
 - `BulkMarkdownIngestionWorkflow.cs` – Batch processes documents from blob storage
 - `OpenApiIngestionWorkflow.cs` – Parses and ingests OpenAPI specifications
@@ -155,10 +156,17 @@ Configuration is defined in [src/SemanticHub.Api/appsettings.json](src/SemanticH
 
 - `POST /ingestion/markdown` – Ingest single Markdown document
 - `POST /ingestion/html` – Ingest single HTML document
-- `POST /ingestion/webpage` – Scrape and ingest web page
+- `POST /ingestion/webpage` – Scrape and ingest single web page (with optional title override)
+- `POST /ingestion/batch-webpage` – Scrape and ingest multiple URLs concurrently (titles inferred)
 - `POST /ingestion/sitemap` – Crawl sitemap and ingest discovered pages
 - `POST /ingestion/openapi` – Parse and ingest OpenAPI specification
 - `POST /ingestion/bulk` – Batch process documents from blob storage (auto-detects type)
+
+See detailed documentation:
+- [Batch Web Page Ingestion](docs/BATCH_WEBPAGE_INGESTION.md)
+- [Sitemap Ingestion](docs/SITEMAP_INGESTION.md)
+- [OpenAPI Ingestion](docs/OPENAPI_INGESTION.md)
+- [Blob Storage Ingestion](docs/BLOB_INGESTION.md)
 
 ### Workflow Behavior
 

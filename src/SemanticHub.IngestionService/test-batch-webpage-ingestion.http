@@ -1,0 +1,96 @@
+### Batch Web Page Ingestion Tests
+### These requests test the batch web page ingestion endpoint
+
+@baseUrl = https://localhost:7123
+@baseUrlHttp = http://localhost:5123
+
+### Test 1: Ingest multiple URLs with default settings
+POST {{baseUrl}}/ingestion/batch-webpage
+Content-Type: application/json
+
+{
+  "urls": [
+    "https://example.com",
+    "https://example.org",
+    "https://example.net"
+  ],
+  "tags": ["example", "batch-test"],
+  "metadata": {
+    "source": "test-batch-ingestion",
+    "environment": "development"
+  }
+}
+
+### Test 2: Ingest multiple URLs with custom concurrency and throttling
+POST {{baseUrl}}/ingestion/batch-webpage
+Content-Type: application/json
+
+{
+  "urls": [
+    "https://docs.microsoft.com/en-us/dotnet/",
+    "https://docs.microsoft.com/en-us/azure/",
+    "https://docs.microsoft.com/en-us/aspnet/"
+  ],
+  "maxConcurrency": 2,
+  "throttleMilliseconds": 500,
+  "tags": ["microsoft-docs", "documentation"],
+  "metadata": {
+    "category": "technical-documentation"
+  }
+}
+
+### Test 3: Ingest small batch (2 URLs)
+POST {{baseUrl}}/ingestion/batch-webpage
+Content-Type: application/json
+
+{
+  "urls": [
+    "https://www.bing.com",
+    "https://www.github.com"
+  ],
+  "maxConcurrency": 5,
+  "throttleMilliseconds": 100,
+  "tags": ["tech-sites"]
+}
+
+### Test 4: Test validation - empty URLs list (should fail)
+POST {{baseUrl}}/ingestion/batch-webpage
+Content-Type: application/json
+
+{
+  "urls": [],
+  "tags": ["validation-test"]
+}
+
+### Test 5: Test validation - null URLs (should fail)
+POST {{baseUrl}}/ingestion/batch-webpage
+Content-Type: application/json
+
+{
+  "tags": ["validation-test"]
+}
+
+### Test 6: Compare single URL ingestion vs batch with 1 URL
+# Single URL ingestion (original endpoint)
+POST {{baseUrl}}/ingestion/webpage
+Content-Type: application/json
+
+{
+  "url": "https://example.com",
+  "title": "Example Website",
+  "tags": ["example"],
+  "metadata": {
+    "test": "single-page"
+  }
+}
+
+### Batch with 1 URL (titles inferred)
+POST {{baseUrl}}/ingestion/batch-webpage
+Content-Type: application/json
+
+{
+  "urls": [
+    "https://example.com"
+  ],
+  "tags": ["example"]
+}

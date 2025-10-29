@@ -31,6 +31,11 @@ public class IngestionEndpoints : IEndpoint
             .WithSummary("Scrape and ingest single URL")
             .WithDescription("Fetches a web page, converts it to Markdown, then chunks, embeds, and indexes it for retrieval.");
 
+        group.MapPost("/batch-webpage", HandleBatchWebPageIngestionAsync)
+            .WithName("IngestBatchWebPages")
+            .WithSummary("Scrape and ingest multiple URLs")
+            .WithDescription("Fetches multiple web pages concurrently, converts them to Markdown, then chunks, embeds, and indexes them. Titles are inferred from page content.");
+
        group.MapPost("/sitemap", HandleSitemapIngestionAsync)
             .WithName("IngestFromSitemap")
             .WithSummary("Scrape and ingest URLs from sitemap")
@@ -74,6 +79,40 @@ public class IngestionEndpoints : IEndpoint
 
         var outcome = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
         return Results.Ok(MapOutcome(outcome));
+    }
+
+    private static async Task<IResult> HandleBatchWebPageIngestionAsync(
+        BatchWebPageIngestionRequest request,
+        IIngestionWorkflow<BatchWebPageIngestion, BatchWebPageIngestionResult> workflow,
+        CancellationToken cancellationToken)
+    {
+        if (request?.Urls == null || request.Urls.Count == 0)
+        {
+            return Results.BadRequest(new { error = "URLs list cannot be empty." });
+        }
+
+        var result = await workflow.ExecuteAsync(request.ToDomain(), cancellationToken);
+
+        var response = new
+        {
+            Success = result.TotalFailed == 0,
+            TotalRequested = result.TotalRequested,
+            TotalSucceeded = result.TotalSucceeded,
+            TotalFailed = result.TotalFailed,
+            DurationMs = result.Duration.TotalMilliseconds,
+            Message = result.Message,
+            Results = result.Results.Select(r => new
+            {
+                Url = r.Url.ToString(),
+                r.Success,
+                r.Title,
+                r.ChunksIndexed,
+                r.ErrorMessage
+            }),
+            Errors = result.Results.Where(r => !r.Success).Select(r => r.ErrorMessage).ToList()
+        };
+
+        return Results.Ok(response);
     }
 
     private static async Task<IResult> HandleOpenApiIngestionAsync(

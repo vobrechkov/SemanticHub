@@ -27,6 +27,32 @@ public static class IngestionRequestMapper
         };
     }
 
+    public static BatchWebPageIngestion ToDomain(this BatchWebPageIngestionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Urls == null || request.Urls.Count == 0)
+        {
+            throw new ArgumentException("URLs list cannot be empty.", nameof(request));
+        }
+
+        var urls = request.Urls.Select(CreateUriOrThrow).ToList();
+
+        var metadata = IngestionMetadata.Create(
+            documentId: null,
+            title: request.Tags?.FirstOrDefault() ?? "Batch Web Pages",
+            sourceType: "batch-webpage",
+            sourceUri: urls[0],
+            tags: request.Tags,
+            metadata: request.Metadata);
+
+        return new BatchWebPageIngestion(metadata, urls)
+        {
+            MaxConcurrency = request.MaxConcurrency ?? 3,
+            ThrottleMilliseconds = request.ThrottleMilliseconds ?? 250
+        };
+    }
+
     public static HtmlDocumentIngestion ToDomain(this HtmlIngestionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

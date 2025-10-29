@@ -30,6 +30,15 @@ public sealed record IngestionResource
     public static IngestionResource FromWebPage(Uri url) =>
         new(IngestionResourceType.WebPage, url, null, null);
 
+    public static IngestionResource FromBatchWebPages(IReadOnlyList<Uri> urls)
+    {
+        if (urls == null || urls.Count == 0)
+        {
+            throw new ArgumentException("URL list cannot be empty.", nameof(urls));
+        }
+        return new(IngestionResourceType.BatchWebPage, urls[0], null, null);
+    }
+
     public static IngestionResource FromHtml(string html, Uri? source = null) =>
         new(IngestionResourceType.Html, source, null, html);
 
