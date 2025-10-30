@@ -22,7 +22,7 @@ public class MarkdownConverter : IMarkdownConverter
         // Configure ReverseMarkdown converter
         _htmlToMarkdown = new Converter(new Config
         {
-            UnknownTags = Config.UnknownTagsOption.PassThrough,
+            UnknownTags = Config.UnknownTagsOption.Bypass,
             GithubFlavored = true,
             RemoveComments = true,
             SmartHrefHandling = true
