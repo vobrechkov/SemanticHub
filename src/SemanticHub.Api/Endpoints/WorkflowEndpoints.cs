@@ -14,8 +14,7 @@ public static class WorkflowEndpoints
     public static IEndpointRouteBuilder MapWorkflowEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/workflows")
-            .WithTags("Workflows")
-            .WithOpenApi();
+            .WithTags("Workflows");
 
         group.MapPost("/ingest", ExecuteIngestionWorkflowAsync)
             .WithName("IngestionWorkflow")

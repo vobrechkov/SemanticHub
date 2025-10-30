@@ -12,6 +12,10 @@ public class KnowledgeBaseTools(
     IKnowledgeStore knowledgeStore,
     AgentFrameworkOptions options)
 {
+    /// <summary>
+    /// The most recent search results, used for citation tracking
+    /// </summary>
+    public IReadOnlyList<KnowledgeRecord>? LatestSearchResults { get; private set; }
 
     /// <summary>
     /// Searches the knowledge base for relevant information.
@@ -35,6 +39,9 @@ public class KnowledgeBaseTools(
                 effectiveLimit,
                 effectiveMinRelevance,
                 cancellationToken);
+
+            // Store results for citation tracking
+            LatestSearchResults = results;
 
             if (results.Count == 0)
             {

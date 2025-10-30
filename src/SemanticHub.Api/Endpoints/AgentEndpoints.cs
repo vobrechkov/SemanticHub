@@ -1,8 +1,9 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
 using SemanticHub.Api.Models;
 using SemanticHub.Api.Services;
 using SemanticHub.Api.Tools;
-using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace SemanticHub.Api.Endpoints;
 
@@ -17,8 +18,7 @@ public static class AgentEndpoints
     public static IEndpointRouteBuilder MapAgentEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/agents")
-            .WithTags("Agents")
-            .WithOpenApi();
+            .WithTags("Agents");
 
         group.MapPost("/chat", HandleChatAsync)
             .WithName("AgentChat")
@@ -97,17 +97,30 @@ public static class AgentEndpoints
     }
 
     /// <summary>
-    /// Handles streaming chat requests
+    /// Handles streaming chat requests with citation support
     /// </summary>
-    private static async IAsyncEnumerable<string> HandleStreamChatAsync(
+    private static async Task HandleStreamChatAsync(
+        HttpContext httpContext,
         AgentChatRequest request,
         AgentService agentService,
         KnowledgeBaseTools knowledgeTools,
         IngestionTools ingestionTools,
         ILogger<AgentService> logger,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         logger.LogInformation("Processing streaming chat request: {Message}", request.Message);
+
+        var messageId = Guid.NewGuid().ToString();
+        var conversationId = request.ConversationId ?? request.ThreadId;
+        var citationsSent = false;
+
+        var response = httpContext.Response;
+        response.StatusCode = StatusCodes.Status200OK;
+        response.ContentType = "text/event-stream";
+        response.Headers.CacheControl = "no-cache";
+        response.Headers.Append("X-Accel-Buffering", "no"); // Disable response buffering for proxies
+
+        await response.StartAsync(cancellationToken);
 
         // Create tool functions from KnowledgeBaseTools methods
         var tools = new[]
@@ -128,14 +141,118 @@ public static class AgentEndpoints
         // Stream the response - framework handles conversation context internally
         await foreach (var update in agent.RunStreamingAsync(request.Message))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (update != null)
             {
                 var updateText = update.ToString();
                 if (!string.IsNullOrEmpty(updateText))
                 {
-                    yield return updateText;
+                    // Check if we have search results and haven't sent citations yet
+                    if (!citationsSent && knowledgeTools.LatestSearchResults != null && knowledgeTools.LatestSearchResults.Count > 0)
+                    {
+                        var citations = ExtractCitations(knowledgeTools.LatestSearchResults);
+
+                        var chunkWithCitations = new StreamedChatChunk
+                        {
+                            MessageId = messageId,
+                            ConversationId = conversationId,
+                            Content = updateText,
+                            Role = "assistant",
+                            Citations = citations,
+                            IsComplete = false
+                        };
+
+                        await WriteSseAsync(response, chunkWithCitations, cancellationToken);
+                        citationsSent = true;
+                    }
+                    else
+                    {
+                        var chunk = new StreamedChatChunk
+                        {
+                            MessageId = messageId,
+                            ConversationId = conversationId,
+                            Content = updateText,
+                            Role = "assistant",
+                            IsComplete = false
+                        };
+
+                        await WriteSseAsync(response, chunk, cancellationToken);
+                    }
                 }
             }
         }
+
+        // Send final chunk to indicate completion
+        var finalChunk = new StreamedChatChunk
+        {
+            MessageId = messageId,
+            ConversationId = conversationId,
+            Content = "",
+            Role = "assistant",
+            IsComplete = true
+        };
+
+        await WriteSseAsync(response, finalChunk, cancellationToken);
+
+        // Ensure the client receives the final chunk promptly
+        await response.Body.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes a chat chunk to the response stream as SSE
+    /// </summary>
+    private static async Task WriteSseAsync(HttpResponse response, StreamedChatChunk chunk, CancellationToken cancellationToken)
+    {
+        var message = FormatSseMessage(chunk);
+        await response.WriteAsync(message, cancellationToken);
+        await response.Body.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Formats a chat chunk as an SSE message payload
+    /// </summary>
+    private static string FormatSseMessage(StreamedChatChunk chunk)
+    {
+        var json = JsonSerializer.Serialize(chunk, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        });
+        return $"data: {json}\n\n";
+    }
+
+    /// <summary>
+    /// Extracts citations from knowledge base search results
+    /// </summary>
+    private static List<CitationInfo> ExtractCitations(IReadOnlyList<Memory.KnowledgeRecord> searchResults)
+    {
+        var citations = new List<CitationInfo>();
+
+        for (var i = 0; i < searchResults.Count; i++)
+        {
+            var result = searchResults[i];
+
+            // Extract URL and file path from metadata if available
+            result.Metadata.TryGetValue("url", out var urlObj);
+            result.Metadata.TryGetValue("file_path", out var filePathObj);
+            result.Metadata.TryGetValue("chunk_id", out var chunkIdObj);
+
+            var citation = new CitationInfo
+            {
+                PartIndex = i + 1,
+                Content = result.Content,
+                Id = result.Document.DocumentId,
+                Title = result.Document.Title,
+                FilePath = filePathObj?.ToString(),
+                Url = urlObj?.ToString(),
+                ChunkId = chunkIdObj?.ToString(),
+                Score = result.NormalizedScore
+            };
+
+            citations.Add(citation);
+        }
+
+        return citations;
     }
 }

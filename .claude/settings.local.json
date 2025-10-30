@@ -6,7 +6,13 @@
       "WebFetch(domain:microsoft.github.io)",
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm view:*)",
+      "Bash(npm info:*)",
+      "Bash(npm run build:*)",
+      "Bash(tree:*)",
+      "Bash(npm audit:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

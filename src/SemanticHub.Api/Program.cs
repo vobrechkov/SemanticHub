@@ -56,6 +56,21 @@ builder.Services.AddAgentFramework(builder.Configuration);
 // Register tools
 builder.Services.AddSingleton<IngestionTools>();
 
+// Register conversation storage service
+builder.Services.AddSingleton<IConversationStorageService, ConversationStorageService>();
+
+// Configure CORS for WebApp access
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowWebApp", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3000")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 // Register workflows
 builder.Services.AddScoped<KnowledgeIngestionWorkflow>();
 builder.Services.AddScoped<ResearchWorkflow>();
@@ -71,10 +86,22 @@ if (app.Environment.IsDevelopment())
         .WithOpenApiRoutePattern("/openapi/v1.json"));
 }
 
-app.UseHttpsRedirection();
+// IMPORTANT: CORS must be before UseHttpsRedirection to handle preflight requests
+app.UseCors("AllowWebApp");
+
+// In development, Aspire provides the correct endpoint URLs via service discovery
+// HTTPS redirection would cause CORS issues (Origin becomes null after redirect)
+// In production, configure proper HTTPS endpoints and certificates
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // Map agent endpoints
 app.MapAgentEndpoints();
+
+// Map conversation endpoints
+app.MapConversationEndpoints();
 
 // Map workflow endpoints
 app.MapWorkflowEndpoints();

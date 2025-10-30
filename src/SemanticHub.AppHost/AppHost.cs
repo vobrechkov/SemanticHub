@@ -109,7 +109,7 @@ if (!enableOpenSearch)
 var webApp = builder.AddNpmApp("webapp", "../SemanticHub.WebApp", "dev")
     .WithHttpEndpoint(port: 3000, env: "PORT")
     .WithExternalHttpEndpoints()
-    .WithEnvironment("AGENT_API_URL", agentApi.GetEndpoint("http"))
+    .WithEnvironment("NEXT_PUBLIC_CHAT_API_URL", agentApi.GetEndpoint("http"))
     .WithReference(agentApi).WaitFor(agentApi);
 
 builder.Build().Run();
