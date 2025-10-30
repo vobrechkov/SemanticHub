@@ -11,13 +11,13 @@ SemanticHub demonstrates a modern RAG architecture using:
 - **Azure OpenAI** for chat completions and text embeddings
 - **Azure Blob Storage** for document storage and management
 - **.NET Aspire** for service orchestration, health monitoring, and Azure resource provisioning
-- **OpenSearch** (optional) for local-first development without Azure dependencies
+- **OpenSearch** (optional) for local-first development without Azure Search dependency
 
 ## Architecture
 
 ### Projects
 
-- **SemanticHub.AppHost** – .NET Aspire orchestrator that provisions Azure resources (AI Search, OpenAI, Blob Storage) and manages service discovery
+- **SemanticHub.AppHost** – .NET Aspire orchestrator that provisions Azure resources (AI Search, OpenAI, Blob Storage, etc.) and manages service discovery
 - **SemanticHub.Api** – Agent API exposing chat endpoints, knowledge base tools, and multi-agent workflows via Microsoft Agent Framework
 - **SemanticHub.IngestionService** – Document ingestion pipeline for chunking, embedding generation, and Azure AI Search indexing
 - **SemanticHub.WebApp** – Modern Next.js/React UI for agent interaction
@@ -37,13 +37,13 @@ Aspire orchestrates the following dependency chain:
 
 ## Features
 
-- **🤖 Intelligent Agents** – MAF-powered agents with tool execution and function calling
-- **🔍 Hybrid Search** – Combined keyword, semantic, and vector search via Azure AI Search
-- **📚 Knowledge Base** – Automated document chunking, embedding, and indexing
-- **🔄 Multi-Agent Workflows** – Orchestrated agent collaboration for complex tasks
-- **📊 Observability** – OpenTelemetry integration with distributed tracing
-- **🚀 Modern UI** – Next.js/React frontend with real-time updates
-- **🏗️ Production-Ready** – RBAC authentication, health checks, and resilience patterns
+- **AI Agents** – MAF-powered agents with tool execution and function calling
+- **Hybrid Search** – Combined keyword, semantic, and vector search via Azure AI Search
+- **Knowledge Base** – Automated document chunking, embedding, and indexing
+- **Multi-Agent Workflows** – Orchestrated agent collaboration for complex tasks
+- **Observability** – OpenTelemetry integration with distributed tracing
+- **Web UI** – Next.js/React frontend with real-time updates
+- **Authentication & Resilience** – RBAC authentication, health checks, and resilience patterns
 
 ## Prerequisites
 
@@ -214,58 +214,12 @@ AgentFramework__Memory__Provider=OpenSearch
 
 Services use `DefaultAzureCredential` for Azure authentication:
 
-- **Local Development**: Uses Azure CLI credentials (`az login`)
-- **Production**: Uses Managed Identity or Service Principal
-
-API keys are supported but not recommended for production.
-
-## Development
-
-### Build and Run
-
-```bash
-# Build entire solution
-dotnet build src/SemanticHub.sln
-
-# Run via Aspire (recommended)
-dotnet run --project src/SemanticHub.AppHost
-
-# Run individual services
-dotnet run --project src/SemanticHub.Api
-dotnet run --project src/SemanticHub.IngestionService
-```
-
-### Testing
-
-```bash
-# Run all tests
-dotnet test src/SemanticHub.Tests
-
-# Run with coverage
-dotnet test --collect:"XPlat Code Coverage"
-
-# Run specific test
-dotnet test --filter "FullyQualifiedName~AgentServiceTests"
-```
-
-### Frontend Development
-
-```bash
-cd src/SemanticHub.WebApp
-
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-```
+- **Development**: Azure CLI credentials (`az login`)
+- **Production**: Managed Identity or Service Principal
 
 ## Troubleshooting
 
-### Azure RBAC Issues
+### Azure RBAC 
 
 **Symptom**: "403 Forbidden" or "Insufficient privileges"
 
@@ -275,7 +229,7 @@ npm run build
 3. Verify role assignments in Azure Portal → Resource Group → Access Control (IAM)
 4. Re-login: `az logout && az login`
 
-### Resource Provisioning Failures
+### Resource Provisioning 
 
 **Symptom**: "Resource already exists" or naming conflicts
 
@@ -284,56 +238,7 @@ npm run build
 2. Ensure names are globally unique (e.g., add your initials)
 3. Verify subscription has available quota for AI Search and OpenAI
 
-### Service Discovery Issues
-
-**Symptom**: Services can't connect to dependencies
-
-**Solution**:
-1. Check Aspire Dashboard for service health status
-2. Ensure all dependencies show as "healthy"
-3. Verify environment variables in Aspire Dashboard → Resources → Environment
-
-### Build Errors
-
-**Symptom**: Compilation or restore failures
-
-**Solution**:
-```bash
-# Clean solution
-dotnet clean src/SemanticHub.sln
-
-# Remove bin/obj directories
-find src -name "bin" -o -name "obj" | xargs rm -rf
-
-# Restore and rebuild
-dotnet restore src/SemanticHub.sln
-dotnet build src/SemanticHub.sln
-```
-
-## Project Structure
-
-```
-src/
-├── SemanticHub.sln
-├── SemanticHub.AppHost/          # Aspire orchestration
-│   ├── AppHost.cs                # Resource provisioning & service discovery
-│   └── Scripts/                  # RBAC setup scripts
-├── SemanticHub.Api/              # Agent API
-│   ├── Endpoints/                # HTTP endpoints
-│   ├── Services/                 # Agent orchestration
-│   ├── Tools/                    # MAF tools (search, ingestion)
-│   └── Workflows/                # Multi-agent workflows
-├── SemanticHub.IngestionService/ # Document ingestion
-│   ├── Services/                 # Chunking & embedding
-│   └── Configuration/            # Ingestion settings
-├── SemanticHub.WebApp/           # Next.js frontend
-│   ├── src/app/                  # App Router pages
-│   └── src/components/           # React components
-├── SemanticHub.ServiceDefaults/  # Shared Aspire config
-└── SemanticHub.Tests/            # Test suite
-```
-
-## Key Technologies
+## Tech Stack
 
 - **.NET 9** – Application framework
 - **Microsoft Agent Framework** – Agent orchestration
@@ -344,7 +249,7 @@ src/
 - **xUnit** – Testing framework
 - **OpenTelemetry** – Observability
 
-## Resources
+## Links
 
 - [Microsoft Agent Framework Documentation](https://learn.microsoft.com/azure/ai-services/agents/)
 - [Azure AI Search Documentation](https://learn.microsoft.com/azure/search/)
@@ -354,14 +259,3 @@ src/
 ## License
 
 This project is provided as-is for demonstration and educational purposes.
-
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request with a clear description
-
----
-
-Built with ❤️ using Microsoft Agent Framework and .NET Aspire
