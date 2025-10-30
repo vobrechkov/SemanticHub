@@ -104,9 +104,29 @@ public class MarkdownProcessor(
                 return failureResult;
             }
 
+            logger.LogInformation(
+                "Generating embeddings for {ChunkCount} chunks for document {DocumentId}",
+                validChunks.Count,
+                metadata.Id);
+
+            var embeddingStopwatch = Stopwatch.StartNew();
+
             var embeddings = await embeddingService.GenerateEmbeddingsAsync(
                 validChunks.Select(c => c.Content).ToList(),
                 cancellationToken);
+
+            embeddingStopwatch.Stop();
+
+            activity?.AddEvent(new ActivityEvent("EmbeddingsGenerated", tags: new ActivityTagsCollection
+            {
+                { "chunkCount", validChunks.Count },
+                { "durationMs", embeddingStopwatch.Elapsed.TotalMilliseconds }
+            }));
+
+            logger.LogInformation(
+                "Embedding generation completed for document {DocumentId} in {ElapsedMilliseconds} ms",
+                metadata.Id,
+                embeddingStopwatch.Elapsed.TotalMilliseconds);
 
             activity?.SetTag("ingestion.embedding.count", embeddings.Count);
 

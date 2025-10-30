@@ -1,12 +1,16 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Polly;
+using SemanticHub.ServiceDefaults.Configuration;
 
 namespace SemanticHub.ServiceDefaults;
 
@@ -26,10 +30,14 @@ public static class Extensions
 
         builder.Services.AddServiceDiscovery();
 
+        // Configure resilience options from configuration
+        builder.Services.Configure<ResilienceOptions>(
+            builder.Configuration.GetSection("Resilience"));
+
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience by default
-            http.AddStandardResilienceHandler();
+            // Add resilience with configuration support
+            http.AddConfigurableResilience(builder.Configuration);
 
             // Turn on service discovery by default
             http.AddServiceDiscovery();
@@ -123,5 +131,60 @@ public static class Extensions
         }
 
         return app;
+    }
+
+    /// <summary>
+    /// Adds configurable resilience handlers to HTTP clients based on ResilienceOptions configuration.
+    /// When resilience is disabled, uses no-op policies for immediate failures.
+    /// </summary>
+    private static IHttpClientBuilder AddConfigurableResilience(
+        this IHttpClientBuilder builder,
+        IConfiguration configuration)
+    {
+        var resilienceSection = configuration.GetSection("Resilience");
+        var resilienceOptions = resilienceSection.Get<ResilienceOptions>() ?? new ResilienceOptions();
+
+        if (!resilienceOptions.Enabled)
+        {
+            // Resilience is disabled - use no-op handler that fails immediately
+            builder.AddResilienceHandler("no-op-resilience", (resiliencePipelineBuilder, context) =>
+            {
+                // Empty pipeline - no retry, no circuit breaker, no timeout beyond HttpClient defaults
+                // This allows immediate failures for Development environments
+            });
+
+            return builder;
+        }
+
+        // Resilience is enabled - configure standard resilience handler with custom options
+        builder.AddStandardResilienceHandler(options =>
+        {
+            // Configure retry policy
+            options.Retry.MaxRetryAttempts = resilienceOptions.HttpClient.Retry.MaxAttempts;
+            options.Retry.UseJitter = true;
+
+            if (resilienceOptions.HttpClient.Retry.UseExponentialBackoff)
+            {
+                options.Retry.Delay = TimeSpan.FromMilliseconds(resilienceOptions.HttpClient.Retry.BaseDelayMs);
+                options.Retry.MaxDelay = TimeSpan.FromMilliseconds(resilienceOptions.HttpClient.Retry.MaxDelayMs);
+                options.Retry.BackoffType = Polly.DelayBackoffType.Exponential;
+            }
+            else
+            {
+                options.Retry.Delay = TimeSpan.FromMilliseconds(resilienceOptions.HttpClient.Retry.BaseDelayMs);
+                options.Retry.BackoffType = Polly.DelayBackoffType.Constant;
+            }
+
+            // Configure circuit breaker policy
+            options.CircuitBreaker.FailureRatio = resilienceOptions.HttpClient.CircuitBreaker.FailureThreshold;
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(resilienceOptions.HttpClient.CircuitBreaker.SamplingDurationSeconds);
+            options.CircuitBreaker.MinimumThroughput = resilienceOptions.HttpClient.CircuitBreaker.MinimumThroughput;
+            options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(resilienceOptions.HttpClient.CircuitBreaker.BreakDurationSeconds);
+
+            // Configure total request timeout
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(resilienceOptions.HttpClient.Timeout.TotalRequestTimeoutSeconds);
+        });
+
+        return builder;
     }
 }

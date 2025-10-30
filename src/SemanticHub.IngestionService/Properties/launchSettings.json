@@ -7,7 +7,11 @@
       "launchBrowser": false,
       "applicationUrl": "http://localhost:5269",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
+        "AZURE_IDENTITY_DISABLE_WORKLOAD_IDENTITY": "true",
+        "AZURE_IDENTITY_DISABLE_VISUAL_STUDIO": "true",
+        "AZURE_IDENTITY_DISABLE_VISUAL_STUDIO_CODE": "true"
       }
     },
     "https": {
@@ -16,7 +20,11 @@
       "launchBrowser": false,
       "applicationUrl": "https://localhost:7286;http://localhost:5269",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
+        "AZURE_IDENTITY_DISABLE_WORKLOAD_IDENTITY": "true",
+        "AZURE_IDENTITY_DISABLE_VISUAL_STUDIO": "true",
+        "AZURE_IDENTITY_DISABLE_VISUAL_STUDIO_CODE": "true"
       }
     }
   }

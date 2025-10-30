@@ -96,16 +96,40 @@ public class AzureOpenAIEmbeddingService
             var embeddings = new float[normalizedInputs.Count][];
             var batchCount = 0;
 
+            _logger.LogInformation(
+                "Requesting embeddings for {InputCount} inputs using deployment {Deployment}. Batch size limit: {BatchSize}",
+                normalizedInputs.Count,
+                _options.AzureOpenAI.EmbeddingDeployment,
+                MaxEmbeddingsBatchSize);
+
             for (var offset = 0; offset < normalizedInputs.Count; offset += MaxEmbeddingsBatchSize)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var batchSize = Math.Min(MaxEmbeddingsBatchSize, normalizedInputs.Count - offset);
                 var batchInputs = normalizedInputs.GetRange(offset, batchSize);
+                var batchStopwatch = Stopwatch.StartNew();
+                var currentBatch = batchCount + 1;
+
+                _logger.LogDebug(
+                    "Embedding batch {BatchNumber} starting. Offset: {Offset}, BatchSize: {BatchSize}",
+                    currentBatch,
+                    offset,
+                    batchSize);
+
+                activity?.AddEvent(new ActivityEvent("EmbeddingBatchStarted", tags: new ActivityTagsCollection
+                {
+                    { "batchNumber", currentBatch },
+                    { "batchSize", batchSize },
+                    { "offset", offset }
+                }));
+
                 var response = await _embeddingGenerator.GenerateAsync(
                     batchInputs,
                     _embeddingOptions,
                     cancellationToken);
+
+                batchStopwatch.Stop();
 
                 if (response.Count != batchInputs.Count)
                 {
@@ -120,13 +144,27 @@ public class AzureOpenAIEmbeddingService
                     embeddings[offset + index] = response[index].Vector.ToArray();
                 }
 
+                activity?.AddEvent(new ActivityEvent("EmbeddingBatchCompleted", tags: new ActivityTagsCollection
+                {
+                    { "batchNumber", currentBatch },
+                    { "batchSize", batchSize },
+                    { "responseCount", response.Count },
+                    { "durationMs", batchStopwatch.Elapsed.TotalMilliseconds }
+                }));
+
+                _logger.LogDebug(
+                    "Embedding batch {BatchNumber} completed in {DurationMs} ms with {ResponseCount} responses",
+                    currentBatch,
+                    batchStopwatch.Elapsed.TotalMilliseconds,
+                    response.Count);
+
                 batchCount++;
             }
 
             // Ensure there are no gaps caused by mismatched counts.
             for (var index = 0; index < embeddings.Length; index++)
             {
-                embeddings[index] ??= Array.Empty<float>();
+                embeddings[index] ??= [];
             }
 
             stopwatch.Stop();
@@ -136,11 +174,33 @@ public class AzureOpenAIEmbeddingService
             activity?.SetTag("ingestion.embedding.outputCount", embeddings.Length);
             activity?.SetTag("ingestion.embedding.batchCount", batchCount);
             activity?.SetStatus(ActivityStatusCode.Ok);
+            activity?.AddEvent(new ActivityEvent("EmbeddingGenerationCompleted", tags: new ActivityTagsCollection
+            {
+                { "totalDurationMs", stopwatch.Elapsed.TotalMilliseconds },
+                { "batchCount", batchCount }
+            }));
 
             IngestionTelemetry.EmbeddingGenerationSeconds.Record(stopwatch.Elapsed.TotalSeconds, successTags);
             IngestionTelemetry.EmbeddingsGenerated.Add(embeddings.Length, successTags);
 
             return embeddings;
+        }
+        catch (OperationCanceledException oce)
+        {
+            stopwatch.Stop();
+            var cancelTags = baseTags;
+            cancelTags.Add("status", "cancelled");
+
+            activity?.SetStatus(ActivityStatusCode.Error, "cancelled");
+            activity?.AddEvent(new ActivityEvent("EmbeddingGenerationCancelled", tags: new ActivityTagsCollection
+            {
+                { "elapsedMs", stopwatch.Elapsed.TotalMilliseconds }
+            }));
+
+            IngestionTelemetry.EmbeddingGenerationSeconds.Record(stopwatch.Elapsed.TotalSeconds, cancelTags);
+
+            _logger.LogWarning(oce, "Embedding generation was cancelled for deployment {Deployment}", _options.AzureOpenAI.EmbeddingDeployment);
+            throw;
         }
         catch (Exception ex)
         {
@@ -149,6 +209,11 @@ public class AzureOpenAIEmbeddingService
             failureTags.Add("status", "failed");
 
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddEvent(new ActivityEvent("EmbeddingGenerationFailed", tags: new ActivityTagsCollection
+            {
+                { "elapsedMs", stopwatch.Elapsed.TotalMilliseconds },
+                { "exceptionType", ex.GetType().Name }
+            }));
 
             IngestionTelemetry.EmbeddingGenerationSeconds.Record(stopwatch.Elapsed.TotalSeconds, failureTags);
 

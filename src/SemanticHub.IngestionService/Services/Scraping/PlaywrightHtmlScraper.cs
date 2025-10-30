@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.Xml.Linq;
+using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
 using Polly;
 using Polly.Retry;
 using SemanticHub.IngestionService.Domain.Ports;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Models;
+using SemanticHub.ServiceDefaults.Configuration;
 
 namespace SemanticHub.IngestionService.Services.Scraping;
 
@@ -13,29 +15,60 @@ namespace SemanticHub.IngestionService.Services.Scraping;
 /// Playwright-backed implementation of the HTML scraper port.
 /// </summary>
 public sealed class PlaywrightHtmlScraper(
-    ILogger<PlaywrightHtmlScraper> logger) : IHtmlScraper, IAsyncDisposable
+    ILogger<PlaywrightHtmlScraper> logger,
+    IOptions<ResilienceOptions> resilienceOptions) : IHtmlScraper, IAsyncDisposable
 {
     private readonly HashSet<string> _visitedUrls = [];
     private readonly SemaphoreSlim _concurrencyLimit = new(3);
-    private readonly AsyncRetryPolicy<ScrapedPage> _scrapePolicy = Policy<ScrapedPage>
-        .Handle<Exception>()
-        .WaitAndRetryAsync(
-            retryCount: 3,
-            sleepDurationProvider: attempt => TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt)),
-            onRetry: (outcome, _, attempt, _) =>
-            {
-                if (outcome.Exception is not null)
-                {
-                    logger.LogWarning(outcome.Exception, "Retrying web page scrape. Attempt {Attempt}", attempt);
-                }
-                else
-                {
-                    logger.LogWarning("Retrying web page scrape. Attempt {Attempt}", attempt);
-                }
-            });
+    private readonly IAsyncPolicy<ScrapedPage> _scrapePolicy = CreateRetryPolicy(logger, resilienceOptions.Value);
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
+
+    /// <summary>
+    /// Creates a retry policy for web scraping based on resilience configuration.
+    /// </summary>
+    private static IAsyncPolicy<ScrapedPage> CreateRetryPolicy(
+        ILogger<PlaywrightHtmlScraper> logger,
+        ResilienceOptions options)
+    {
+        if (!options.Enabled)
+        {
+            // Resilience disabled - return no-op policy (no retries)
+            return Policy.NoOpAsync<ScrapedPage>();
+        }
+
+        var webScrapingOptions = options.WebScraping;
+
+        return Policy<ScrapedPage>
+            .Handle<Exception>()
+            .WaitAndRetryAsync(
+                retryCount: webScrapingOptions.MaxAttempts,
+                sleepDurationProvider: attempt =>
+                {
+                    if (webScrapingOptions.UseExponentialBackoff)
+                    {
+                        var delay = TimeSpan.FromMilliseconds(
+                            webScrapingOptions.BaseDelayMs * Math.Pow(2, attempt));
+
+                        var maxDelay = TimeSpan.FromMilliseconds(webScrapingOptions.MaxDelayMs);
+                        return delay > maxDelay ? maxDelay : delay;
+                    }
+
+                    return TimeSpan.FromMilliseconds(webScrapingOptions.BaseDelayMs);
+                },
+                onRetry: (outcome, _, attempt, _) =>
+                {
+                    if (outcome.Exception is not null)
+                    {
+                        logger.LogWarning(outcome.Exception, "Retrying web page scrape. Attempt {Attempt}", attempt);
+                    }
+                    else
+                    {
+                        logger.LogWarning("Retrying web page scrape. Attempt {Attempt}", attempt);
+                    }
+                });
+    }
 
     public async Task<ScrapedPage> ScrapeAsync(Uri url, CancellationToken cancellationToken = default)
     {
