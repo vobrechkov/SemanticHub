@@ -16,6 +16,11 @@ public class AgentChatRequest
     public string? ThreadId { get; set; }
 
     /// <summary>
+    /// Optional conversation ID for tracking multi-turn conversations with citations
+    /// </summary>
+    public string? ConversationId { get; set; }
+
+    /// <summary>
     /// Optional user ID for personalized memory
     /// </summary>
     public string? UserId { get; set; }
@@ -24,6 +29,11 @@ public class AgentChatRequest
     /// Optional custom instructions for this specific interaction
     /// </summary>
     public string? CustomInstructions { get; set; }
+
+    /// <summary>
+    /// Whether to include conversation history in the context (future use)
+    /// </summary>
+    public bool? IncludeHistory { get; set; }
 }
 
 /// <summary>

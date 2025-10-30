@@ -1,0 +1,350 @@
+/**
+ * ChatHistory Component Styles
+ * Conversation history sidebar with list, selection, and delete functionality
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--colorNeutralBackground2);
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--colorNeutralStroke1);
+  background-color: var(--colorNeutralBackground1);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 16px;
+  color: var(--colorNeutralForeground1);
+}
+
+.headerActions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ============================================================================
+   Content
+   ============================================================================ */
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+
+.content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: var(--colorNeutralStroke1);
+  border-radius: 3px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: var(--colorNeutralStroke2);
+}
+
+/* ============================================================================
+   Conversation List
+   ============================================================================ */
+
+.conversationList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conversationItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  gap: 8px;
+}
+
+.conversationItem:hover {
+  background-color: var(--colorNeutralBackground1Hover);
+  border-color: var(--colorNeutralStroke1);
+}
+
+.conversationItem:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 2px;
+}
+
+.conversationItem.selected {
+  background-color: var(--colorBrandBackground2);
+  border-color: var(--colorBrandStroke1);
+}
+
+.conversationItem.selected:hover {
+  background-color: var(--colorBrandBackground2Hover);
+}
+
+/* ============================================================================
+   Conversation Content
+   ============================================================================ */
+
+.conversationContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conversationTitle {
+  color: var(--colorNeutralForeground1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+.conversationItem.selected .conversationTitle {
+  color: var(--colorBrandForeground1);
+  font-weight: 600;
+}
+
+.conversationTimestamp {
+  color: var(--colorNeutralForeground3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversationItem.selected .conversationTimestamp {
+  color: var(--colorBrandForeground2);
+}
+
+/* ============================================================================
+   Delete Button
+   ============================================================================ */
+
+.deleteButton {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.conversationItem:hover .deleteButton {
+  opacity: 1;
+}
+
+.conversationItem:focus-within .deleteButton {
+  opacity: 1;
+}
+
+.deleteButton:hover {
+  background-color: var(--colorPaletteRedBackground1);
+  color: var(--colorPaletteRedForeground1);
+}
+
+/* ============================================================================
+   Loading Skeleton
+   ============================================================================ */
+
+.skeletonContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+
+.skeletonItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background-color: var(--colorNeutralBackground1);
+}
+
+/* ============================================================================
+   Empty State
+   ============================================================================ */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  min-height: 300px;
+}
+
+.emptyStateIcon {
+  color: var(--colorNeutralForeground3);
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.emptyStateTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--colorNeutralForeground2);
+  margin-bottom: 8px;
+}
+
+.emptyStateSubtitle {
+  font-size: 14px;
+  color: var(--colorNeutralForeground3);
+  margin-bottom: 24px;
+}
+
+.emptyStateButton {
+  min-width: 160px;
+}
+
+/* ============================================================================
+   Animations
+   ============================================================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.conversationItem {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* ============================================================================
+   Dark Mode
+   ============================================================================ */
+
+[data-bs-theme='dark'] .container {
+  background-color: var(--colorNeutralBackground2);
+}
+
+[data-bs-theme='dark'] .header {
+  background-color: var(--colorNeutralBackground1);
+  border-bottom-color: var(--colorNeutralStroke2);
+}
+
+[data-bs-theme='dark'] .conversationItem:hover {
+  background-color: var(--colorNeutralBackground1Hover);
+}
+
+[data-bs-theme='dark'] .conversationItem.selected {
+  background-color: var(--colorBrandBackground2);
+  border-color: var(--colorBrandStroke1);
+}
+
+[data-bs-theme='dark'] .skeletonItem {
+  background-color: var(--colorNeutralBackground3);
+}
+
+/* ============================================================================
+   Responsive Design
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .header {
+    padding: 12px;
+  }
+
+  .headerTitle {
+    font-size: 14px;
+  }
+
+  .conversationItem {
+    padding: 10px;
+  }
+
+  .conversationTitle {
+    font-size: 13px;
+  }
+
+  .conversationTimestamp {
+    font-size: 11px;
+  }
+
+  .emptyState {
+    padding: 24px 12px;
+    min-height: 200px;
+  }
+
+  .emptyStateTitle {
+    font-size: 14px;
+  }
+
+  .emptyStateSubtitle {
+    font-size: 12px;
+  }
+}
+
+/* ============================================================================
+   Accessibility
+   ============================================================================ */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .conversationItem {
+    border: 1px solid var(--colorNeutralStroke1);
+  }
+
+  .conversationItem.selected {
+    border: 2px solid var(--colorBrandStroke1);
+  }
+
+  .deleteButton {
+    opacity: 1;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .conversationItem {
+    animation: none;
+    transition: none;
+  }
+
+  .deleteButton {
+    transition: none;
+  }
+}
+
+/* Focus visible for keyboard navigation */
+.conversationItem:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
