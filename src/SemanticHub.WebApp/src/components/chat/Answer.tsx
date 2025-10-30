@@ -100,11 +100,11 @@ const AnswerComponent: React.FC<AnswerProps> = ({
 
     return parsedContent.references
       .map(ref => {
-        // Extract document index from originalId (e.g., "doc1" -> 0)
+        // Extract document index from originalId (e.g., "doc0" -> 0, "doc1" -> 1)
         const docIndexMatch = ref.originalId.match(/^doc(\d+)$/);
         if (!docIndexMatch) return null;
 
-        const docIndex = parseInt(docIndexMatch[1], 10) - 1;
+        const docIndex = parseInt(docIndexMatch[1], 10);
         const citation = citations[docIndex];
 
         if (!citation) return null;
