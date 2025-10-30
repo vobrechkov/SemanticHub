@@ -1,6 +1,6 @@
 # SemanticHub
 
-A Retrieval Augmented Generation (RAG) solution built with Microsoft Agent Framework (MAF), Azure AI Search, and Azure OpenAI. Orchestrated with .NET Aspire.
+Sample RAG solution built with Microsoft Agent Framework (MAF), Azure AI Search, Azure OpenAI, and .NET Aspire.
 
 ## Overview
 
