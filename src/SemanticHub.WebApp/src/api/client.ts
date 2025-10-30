@@ -437,9 +437,9 @@ export async function* streamChatMessage(
 
     // Check that we got a streaming response
     const contentType = response.headers.get('content-type');
-    if (!contentType?.includes('text/event-stream') && !contentType?.includes('text/plain')) {
+    if (!contentType?.includes('text/event-stream')) {
       throwApiError(
-        'Expected streaming response but got: ' + contentType,
+        'Expected "text/event-stream" response but got: ' + contentType,
         response.status
       );
     }
