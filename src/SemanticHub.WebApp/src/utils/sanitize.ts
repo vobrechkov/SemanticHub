@@ -133,7 +133,7 @@ export function sanitizeMarkdown(markdown: string): string {
   // More permissive config for markdown content
   const markdownConfig = {
     ...sanitizeConfig,
-    ALLOWED_TAGS: [...XSSAllowTags, 'code', 'pre'],
+    ALLOWED_TAGS: XSSAllowTags,
     KEEP_CONTENT: true, // Preserve content of forbidden tags
   };
 
