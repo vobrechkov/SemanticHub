@@ -2,7 +2,7 @@
 
 Sample RAG solution built with Microsoft Agent Framework (MAF), Azure AI Search, Azure OpenAI, and .NET Aspire.
 
-### Projects
+## Projects
 
 - **SemanticHub.AppHost** – .NET Aspire orchestrator that provisions Azure resources (AI Search, OpenAI, Blob Storage, etc.) and manages service discovery
 - **SemanticHub.Api** – Agent API exposing chat endpoints, knowledge base tools, and multi-agent workflows via Microsoft Agent Framework
@@ -11,9 +11,7 @@ Sample RAG solution built with Microsoft Agent Framework (MAF), Azure AI Search,
 - **SemanticHub.ServiceDefaults** – Shared Aspire configuration (telemetry, health checks, resilience policies)
 - **SemanticHub.Tests** – xUnit integration and unit test suite
 
-### Service Dependencies
-
-Aspire orchestrates the following dependency chain:
+## Aspire
 
 1. **Azure OpenAI** – Chat (`gpt-4o-mini`) and embedding (`text-embedding-3-small`) deployments
 2. **Azure AI Search** – Vector + hybrid search index provisioning
@@ -22,28 +20,7 @@ Aspire orchestrates the following dependency chain:
 5. **SemanticHub.Api** → depends on Azure OpenAI + Azure AI Search + Blob Storage + IngestionService
 6. **SemanticHub.WebApp** → depends on API
 
-## Prerequisites
-
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Node.js 20+](https://nodejs.org/) (for Next.js frontend)
-- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)
-- Azure subscription with access to:
-  - Azure AI Search
-  - Azure OpenAI Service
-  - Azure Blob Storage
-- Optional: [Docker Desktop](https://www.docker.com/products/docker-desktop) (for OpenSearch/Azurite containers)
-
-## Quick Start
-
-### 1. Clone and Build
-
-```bash
-git clone https://github.com/vobrechkov/SemanticKernelMemoryRAG.git
-cd SemanticKernelMemoryRAG
-dotnet build src/SemanticHub.sln
-```
-
-### 2. Configure Azure RBAC (Required)
+## Azure RBAC
 
 Grant your Azure identity the necessary permissions:
 
@@ -53,21 +30,6 @@ cd src/SemanticHub.AppHost/Scripts
 ```
 
 Wait 5-10 minutes for role assignments to propagate. See [Scripts/README.md](src/SemanticHub.AppHost/Scripts/README.md) for details.
-
-### 3. Run the Application
-
-```bash
-dotnet run --project src/SemanticHub.AppHost
-```
-
-This starts all services via Aspire with automatic resource provisioning and service discovery.
-
-### 4. Access the Services
-
-- **Aspire Dashboard**: Check terminal output for URL (typically `https://localhost:17xxx`)
-- **Agent API**: Available at `https://localhost:<port>` (see dashboard for port)
-- **Next.js WebApp**: `http://localhost:3000`
-- **API Documentation**: Scalar API docs at Agent API root URL
 
 ## API Endpoints
 
@@ -125,7 +87,7 @@ curl -X POST https://localhost:<port>/ingestion/openapi \
   }'
 ```
 
-The OpenAPI ingestion:
+*OpenAPI ingestion flow:*
 - Parses OpenAPI 3.x specifications (YAML or JSON)
 - Converts each endpoint to structured Markdown with YAML frontmatter
 - Extracts parameters, request/response schemas, and examples
@@ -146,9 +108,9 @@ AgentFramework__Memory__Provider=AzureSearch
 AgentFramework__Memory__Provider=OpenSearch
 ```
 
-### Key Configuration Sections
+### Configuration Sections
 
-**Agent API** (`appsettings.json`):
+**Agent API**:
 ```json
 {
   "AgentFramework": {
@@ -168,7 +130,7 @@ AgentFramework__Memory__Provider=OpenSearch
 }
 ```
 
-**Ingestion Service** (`appsettings.json`):
+**Ingestion Service**:
 ```json
 {
   "Ingestion": {
@@ -189,10 +151,8 @@ AgentFramework__Memory__Provider=OpenSearch
 
 ### Authentication
 
-Services use `DefaultAzureCredential` for Azure authentication:
-
-- **Development**: Azure CLI credentials (`az login`)
-- **Production**: Managed Identity or Service Principal
+- **Development**: Azure CLI credentials 
+- **Production**: Managed Identity / Service Principal
 
 ## Troubleshooting
 
@@ -212,7 +172,7 @@ Services use `DefaultAzureCredential` for Azure authentication:
 
 **Solution**:
 1. Edit resource names in `src/SemanticHub.AppHost/AppHost.cs`
-2. Ensure names are globally unique (e.g., add your initials)
+2. Ensure names are globally unique 
 3. Verify subscription has available quota for AI Search and OpenAI
 
 ## Links
