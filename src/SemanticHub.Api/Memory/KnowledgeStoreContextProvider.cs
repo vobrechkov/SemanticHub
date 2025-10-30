@@ -52,7 +52,7 @@ public sealed class KnowledgeStoreContextProvider(
             for (var i = 0; i < results.Count; i++)
             {
                 var result = results[i];
-                contextBuilder.AppendLine($"Document {i + 1}: {result.Document.DocumentId}");
+                contextBuilder.AppendLine($"Document {i}: {result.Document.DocumentId}");
                 if (!string.IsNullOrEmpty(result.Document.Title))
                 {
                     contextBuilder.AppendLine($"Title: {result.Document.Title}");

@@ -2,9 +2,9 @@
  * Citation reference extracted from markdown content
  */
 export interface CitationReference {
-  /** The citation number (1-based index) */
+  /** The citation number (1-based display index) */
   number: number;
-  /** The original citation ID from the markdown (e.g., "doc1") */
+  /** The original citation ID from the markdown (e.g., "doc0", "doc1") */
   originalId: string;
   /** Position in the text where citation appears */
   position: number;
@@ -22,15 +22,15 @@ export interface ParsedCitations {
 
 /**
  * Parses citation references from markdown content
- * Extracts patterns like [doc1], [doc2], etc. and replaces them with superscript numbers
+ * Extracts patterns like [doc0], [doc1], etc. and replaces them with superscript numbers
  *
  * @param markdown - The markdown content containing citation references
  * @returns Object containing processed text and citation references
  *
  * @example
- * const result = parseCitations("Some text [doc1] with citation [doc2]");
+ * const result = parseCitations("Some text [doc0] with citation [doc1]");
  * // result.text = "Some text ^1^ with citation ^2^"
- * // result.references = [{number: 1, originalId: "doc1", position: 10}, ...]
+ * // result.references = [{number: 1, originalId: "doc0", position: 10}, ...]
  */
 export function parseCitations(markdown: string): ParsedCitations {
   const citationPattern = /\[(doc\d+)\]/g;
@@ -87,11 +87,11 @@ export function parseCitations(markdown: string): ParsedCitations {
 
 /**
  * Extracts the document index from a citation ID
- * @param citationId - Citation ID like "doc1", "doc2", etc.
+ * @param citationId - Citation ID like "doc0", "doc1", etc.
  * @returns The numeric index, or null if invalid format
  *
  * @example
- * extractDocIndex("doc1") // returns 1
+ * extractDocIndex("doc0") // returns 0
  * extractDocIndex("doc23") // returns 23
  */
 export function extractDocIndex(citationId: string): number | null {
