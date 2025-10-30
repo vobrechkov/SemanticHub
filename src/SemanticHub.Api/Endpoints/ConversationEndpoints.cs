@@ -238,13 +238,21 @@ public static class ConversationEndpoints
 
             return Results.Ok(new { message });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            logger.LogError(ex, "Error deleting all conversations");
+            logger.LogError(ex, "Invalid operation while deleting conversations");
             return Results.Problem(
-                title: "Storage Error",
+                title: "Operation Error",
                 detail: ex.Message,
                 statusCode: 500);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            logger.LogError(ex, "Access denied while deleting conversations");
+            return Results.Problem(
+                title: "Access Denied",
+                detail: "Insufficient permissions to delete conversations",
+                statusCode: 403);
         }
     }
 }
