@@ -2,19 +2,6 @@
 
 Sample RAG solution built with Microsoft Agent Framework (MAF), Azure AI Search, Azure OpenAI, and .NET Aspire.
 
-## Overview
-
-SemanticHub demonstrates a modern RAG architecture using:
-
-- **Microsoft Agent Framework (MAF)** for agent orchestration and tool execution
-- **Azure AI Search** for hybrid (keyword + vector) semantic retrieval
-- **Azure OpenAI** for chat completions and text embeddings
-- **Azure Blob Storage** for document storage and management
-- **.NET Aspire** for service orchestration, health monitoring, and Azure resource provisioning
-- **OpenSearch** (optional) for local-first development without Azure Search dependency
-
-## Architecture
-
 ### Projects
 
 - **SemanticHub.AppHost** – .NET Aspire orchestrator that provisions Azure resources (AI Search, OpenAI, Blob Storage, etc.) and manages service discovery
@@ -34,16 +21,6 @@ Aspire orchestrates the following dependency chain:
 4. **SemanticHub.IngestionService** → depends on Azure OpenAI + Azure AI Search
 5. **SemanticHub.Api** → depends on Azure OpenAI + Azure AI Search + Blob Storage + IngestionService
 6. **SemanticHub.WebApp** → depends on API
-
-## Features
-
-- **AI Agents** – MAF-powered agents with tool execution and function calling
-- **Hybrid Search** – Combined keyword, semantic, and vector search via Azure AI Search
-- **Knowledge Base** – Automated document chunking, embedding, and indexing
-- **Multi-Agent Workflows** – Orchestrated agent collaboration for complex tasks
-- **Observability** – OpenTelemetry integration with distributed tracing
-- **Web UI** – Next.js/React frontend with real-time updates
-- **Authentication & Resilience** – RBAC authentication, health checks, and resilience patterns
 
 ## Prerequisites
 
@@ -237,17 +214,6 @@ Services use `DefaultAzureCredential` for Azure authentication:
 1. Edit resource names in `src/SemanticHub.AppHost/AppHost.cs`
 2. Ensure names are globally unique (e.g., add your initials)
 3. Verify subscription has available quota for AI Search and OpenAI
-
-## Tech Stack
-
-- **.NET 9** – Application framework
-- **Microsoft Agent Framework** – Agent orchestration
-- **Azure AI Search** – Vector + semantic search
-- **Azure OpenAI** – LLM and embeddings
-- **.NET Aspire** – Service orchestration
-- **Next.js 15** – Modern web UI
-- **xUnit** – Testing framework
-- **OpenTelemetry** – Observability
 
 ## Links
 
