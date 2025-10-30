@@ -5,9 +5,7 @@
 
 import {
   ApiError,
-  ChatMessage,
   Conversation,
-  ConversationListResponse,
   CreateConversationRequest,
   SendMessageRequest,
   StreamedChatChunk,
