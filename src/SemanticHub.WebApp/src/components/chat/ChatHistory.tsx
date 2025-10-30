@@ -10,7 +10,6 @@ import {
   Button,
   Text,
   Dialog,
-  DialogTrigger,
   DialogSurface,
   DialogBody,
   DialogTitle,
