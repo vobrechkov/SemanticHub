@@ -87,9 +87,10 @@ const AnswerComponent: React.FC<AnswerProps> = ({
 
   // Parse citations from markdown content
   const parsedContent = useMemo(() => {
+    // Sanitize markdown, but fall back to raw content if everything was stripped.
     const sanitized = sanitizeMarkdown(answer);
-    const parsed = parseCitations(sanitized);
-    return parsed;
+    const sanitizedOrOriginal = sanitized.trim().length > 0 ? sanitized : answer;
+    return parseCitations(sanitizedOrOriginal);
   }, [answer]);
 
   // Map citation references to actual citation objects
