@@ -65,7 +65,7 @@ public static class WorkflowEndpoints
             }
 
             // Create workflow agent
-            var workflowAgent = await ingestionWorkflow.CreateWorkflowAsync();
+            var workflowAgent = ingestionWorkflow.CreateWorkflow();
 
             logger.LogInformation("Executing ingestion workflow with {Length} characters of content", documentContent.Length);
 

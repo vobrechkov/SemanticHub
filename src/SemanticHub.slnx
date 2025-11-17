@@ -1,0 +1,14 @@
+﻿<Solution>
+	<Folder Name="/Solution Items/">
+		<File Path="../.gitignore" />
+		<File Path="../AGENTS.md" />
+		<File Path="../CLAUDE.md" />
+		<File Path="../README.md" />
+	</Folder>
+	<Project Path="SemanticHub.AppHost/SemanticHub.AppHost.csproj" />
+	<Project Path="SemanticHub.ServiceDefaults/SemanticHub.ServiceDefaults.csproj" />
+	<Project Path="SemanticHub.Api/SemanticHub.Api.csproj" />
+	<Project Path="SemanticHub.IngestionService/SemanticHub.IngestionService.csproj" />
+	<Project Path="SemanticHub.Tests/SemanticHub.Tests.csproj" />
+	<Project Path="SemanticHub.WebApp/SemanticHub.WebApp.csproj" />
+</Solution>

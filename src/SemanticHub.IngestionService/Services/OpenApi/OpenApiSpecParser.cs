@@ -1,6 +1,11 @@
+using System;
 using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
 using System.Text;
 using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
+using Microsoft.OpenApi.Readers;
 using SemanticHub.IngestionService.Diagnostics;
 using SemanticHub.IngestionService.Domain.OpenApi;
 using SemanticHub.IngestionService.Domain.Ports;
@@ -35,19 +40,24 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
 
         try
         {
-            // In OpenAPI.NET v2, use OpenApiDocument.Parse() for string content
-            // The Parse method returns a ReadResult which can be deconstructed
-            var (document, diagnostic) = OpenApiDocument.Parse(specDocument.Content, format: OpenApiConstants.Json);
-            
+            // Use OpenAPI string reader so JSON/YAML are auto-detected
+            var format = DetermineSpecFormat(specDocument.Content);
+            activity?.SetTag("ingestion.openapi.specFormat", format);
+
+            var readerSettings = CreateReaderSettings();
+            var (document, diagnostic) = await ReadDocumentAsync(
+                specDocument.Content,
+                specDocument.Source,
+                format,
+                readerSettings,
+                cancellationToken);
+
             if (document == null)
             {
                 throw new InvalidOperationException($"Failed to parse OpenAPI document from {specDocument.Source}");
             }
 
-            if (diagnostic != null)
-            {
-                LogDiagnostics(diagnostic);
-            }
+            LogDiagnostics(diagnostic);
 
             var endpoints = ExtractEndpoints(document, specDocument.Source);
             activity?.SetTag("ingestion.openapi.endpointCount", endpoints.Count);
@@ -75,8 +85,91 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
         }
     }
 
-    private void LogDiagnostics(Microsoft.OpenApi.Reader.OpenApiDiagnostic diagnostic)
+    private static OpenApiReaderSettings CreateReaderSettings() =>
+        new();
+
+    private static async Task<(OpenApiDocument? Document, OpenApiDiagnostic Diagnostic)> ReadDocumentAsync(
+        string content,
+        string source,
+        string format,
+        OpenApiReaderSettings settings,
+        CancellationToken cancellationToken)
     {
+        return format switch
+        {
+            OpenApiConstants.Json => await ReadWithReaderAsync(
+                new OpenApiJsonReader(),
+                content,
+                source,
+                settings,
+                cancellationToken),
+            OpenApiConstants.Yaml or OpenApiConstants.Yml => await ReadWithReaderAsync(
+                new OpenApiYamlReader(),
+                content,
+                source,
+                settings,
+                cancellationToken),
+            _ => throw new InvalidOperationException("Unsupported OpenAPI specification format.")
+        };
+    }
+
+    private static string DetermineSpecFormat(string content)
+    {
+        // Simple heuristic to determine if content is JSON or YAML
+        var trimmed = content.TrimStart();
+        if (trimmed.StartsWith("{") || trimmed.StartsWith("["))
+        {
+            return OpenApiConstants.Json;
+        }
+        return OpenApiConstants.Yaml;
+    }
+
+    private static async Task<(OpenApiDocument? Document, OpenApiDiagnostic Diagnostic)> ReadWithReaderAsync(
+        OpenApiJsonReader reader,
+        string content,
+        string source,
+        OpenApiReaderSettings settings,
+        CancellationToken cancellationToken)
+    {
+        using var stream = CreateContentStream(content);
+        var location = CreateLocationUri(source);
+        var result = await reader.ReadAsync(stream, location, settings, cancellationToken);
+        return NormalizeResult(result);
+    }
+
+    private static async Task<(OpenApiDocument? Document, OpenApiDiagnostic Diagnostic)> ReadWithReaderAsync(
+        OpenApiYamlReader reader,
+        string content,
+        string source,
+        OpenApiReaderSettings settings,
+        CancellationToken cancellationToken)
+    {
+        using var stream = CreateContentStream(content);
+        var result = await reader.ReadAsync(stream, settings, cancellationToken);
+        return NormalizeResult(result);
+    }
+
+    private static MemoryStream CreateContentStream(string content) =>
+        new(Encoding.UTF8.GetBytes(content ?? string.Empty), writable: false);
+
+    private static Uri CreateLocationUri(string source) =>
+        Uri.TryCreate(source, UriKind.Absolute, out var uri)
+            ? uri
+            : new Uri("file:///generated-openapi-spec");
+
+    private static (OpenApiDocument? Document, OpenApiDiagnostic Diagnostic) NormalizeResult(ReadResult result)
+    {
+        var diagnostic = result.Diagnostic ?? new OpenApiDiagnostic();
+        return (result.Document, diagnostic);
+    }
+
+    private void LogDiagnostics(OpenApiDiagnostic? diagnostic)
+    {
+        if (diagnostic == null)
+        {
+            return;
+        }
+
         if (diagnostic.Errors.Count > 0)
         {
             logger.LogWarning(
