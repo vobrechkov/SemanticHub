@@ -19,7 +19,7 @@ public class KnowledgeIngestionWorkflow(
     /// Creates a multi-agent workflow for document ingestion
     /// Workflow steps: Validation → Extraction → Indexing → Verification
     /// </summary>
-    public async Task<AIAgent> CreateWorkflowAsync()
+    public AIAgent CreateWorkflow()
     {
         logger.LogInformation("Creating knowledge ingestion workflow");
 

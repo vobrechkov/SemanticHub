@@ -113,7 +113,7 @@ public sealed class OpenApiSpecParser(ILogger<OpenApiSpecParser> logger) : IOpen
         };
     }
 
-    private string DetermineSpecFormat(string content)
+    private static string DetermineSpecFormat(string content)
     {
         // Simple heuristic to determine if content is JSON or YAML
         var trimmed = content.TrimStart();

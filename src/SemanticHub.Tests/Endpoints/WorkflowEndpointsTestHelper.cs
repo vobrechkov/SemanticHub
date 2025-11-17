@@ -31,8 +31,8 @@ public static class WorkflowEndpoints_TestHelper
                 return Results.BadRequest(new { error = "Document content cannot be empty" });
             }
 
-            var workflowAgent = await ingestionWorkflow.CreateWorkflowAsync();
-            var result = await workflowAgent.RunAsync(documentContent);
+            var workflowAgent = ingestionWorkflow.CreateWorkflow();
+            var result = await workflowAgent.RunAsync(documentContent, cancellationToken: cancellationToken);
 
             return Results.Ok(new WorkflowExecutionResponse
             {
