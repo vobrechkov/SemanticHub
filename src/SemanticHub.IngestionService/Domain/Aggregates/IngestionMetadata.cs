@@ -25,7 +25,7 @@ public sealed record IngestionMetadata
         string? sourceType,
         Uri? sourceUri,
         IEnumerable<string>? tags,
-        IReadOnlyDictionary<string, object>? metadata)
+        IReadOnlyDictionary<string, object>? metadata = null)
     {
         return new IngestionMetadata
         {

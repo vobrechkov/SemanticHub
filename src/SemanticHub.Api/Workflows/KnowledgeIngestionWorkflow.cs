@@ -101,7 +101,7 @@ public class KnowledgeIngestionWorkflow(
         logger.LogInformation("Workflow created successfully");
 
         // Convert workflow to agent
-        return await workflow.AsAgentAsync();
+        return workflow.AsAgent();
     }
 }
 

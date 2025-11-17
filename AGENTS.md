@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents (including Claude Code, GitHub C
 
 ## Overview
 
-This is a .NET 9 solution that demonstrates a Microsoft Agent Framework (MAF) RAG stack using Azure AI Search as the knowledge store and Azure OpenAI for chat/embeddings. .NET Aspire handles orchestration and service discovery.
+This is a .NET 10 solution that demonstrates a Microsoft Agent Framework (MAF) RAG stack using Azure AI Search as the knowledge store and Azure OpenAI for chat/embeddings. .NET Aspire handles orchestration and service discovery.
 
 The solution implements a modern, domain-driven architecture for ingesting various document types (HTML, Markdown, OpenAPI specs, and web pages via sitemaps) and making them searchable through intelligent agents.
 
