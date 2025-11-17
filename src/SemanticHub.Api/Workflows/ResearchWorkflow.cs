@@ -75,7 +75,7 @@ public class ResearchWorkflow(
         logger.LogInformation("Research workflow created successfully");
 
         // Convert workflow to agent
-        return await workflow.AsAgentAsync();
+        return workflow.AsAgent();
     }
 
     /// <summary>
@@ -118,6 +118,6 @@ public class ResearchWorkflow(
         logger.LogInformation("Fast research workflow created successfully");
 
         // Convert workflow to agent
-        return await workflow.AsAgentAsync();
+        return workflow.AsAgent();
     }
 }

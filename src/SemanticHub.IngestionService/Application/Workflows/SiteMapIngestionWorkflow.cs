@@ -319,7 +319,7 @@ public sealed class SiteMapIngestionWorkflow(
         metadataDictionary["sitemap.url"] = entry.Location.AbsoluteUri;
         metadataDictionary["sitemap.changeFrequency"] = entry.ChangeFrequency ?? "unspecified";
         metadataDictionary["sitemap.priority"] = entry.Priority ?? 0d;
-        metadataDictionary["sitemap.lastModified"] = entry.LastModified?.UtcDateTime;
+        metadataDictionary["sitemap.lastModified"] = entry.LastModified?.UtcDateTime ?? DateTime.MinValue;
         metadataDictionary["sitemap.score"] = entry.HeuristicScore;
 
         return new WebPageIngestionRequest
