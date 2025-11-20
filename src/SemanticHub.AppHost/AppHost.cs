@@ -106,7 +106,7 @@ if (!enableOpenSearch)
     agentApi.WithEnvironment("AgentFramework__Memory__Provider", "AzureSearch");
 }
 
-var webApp = builder.AddNpmApp("webapp", "../SemanticHub.WebApp", "dev")
+var webApp = builder.AddJavaScriptApp("webapp", "../SemanticHub.WebApp", "dev")
     .WithHttpEndpoint(port: 3000, env: "PORT")
     .WithExternalHttpEndpoints()
     .WithEnvironment("NEXT_PUBLIC_CHAT_API_URL", agentApi.GetEndpoint("http"))
